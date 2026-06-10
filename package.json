@@ -1,0 +1,25 @@
+{
+  "name": "obsidian-interactive-board",
+  "version": "1.0.0",
+  "description": "Interactive visual board plugin for Obsidian",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production"
+  },
+  "keywords": [
+    "obsidian",
+    "plugin",
+    "board",
+    "canvas"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.19.0",
+    "obsidian": "latest",
+    "tslib": "^2.8.1",
+    "typescript": "^5.0.0"
+  }
+}
