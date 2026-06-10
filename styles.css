@@ -1,0 +1,597 @@
+/* Timeline View — premium styling with Obsidian theme variable integration. */
+
+/* ============================================
+   Root
+   ============================================ */
+.tlv-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  font-size: var(--font-ui-small);
+  font-family: var(--font-interface);
+}
+
+/* ============================================
+   Toolbar
+   ============================================ */
+.tlv-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  backdrop-filter: blur(8px);
+}
+
+.tlv-toolbar-group {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/* View mode switch */
+.tlv-view-switch {
+  gap: 2px;
+  background: var(--background-modifier-hover);
+  border-radius: var(--radius-m);
+  padding: 2px;
+}
+
+.tlv-mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: calc(var(--radius-m) - 2px);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-ui-smaller);
+  font-weight: 500;
+  transition: all 0.2s ease;
+  line-height: 1.4;
+}
+
+.tlv-mode-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.tlv-mode-btn.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.tlv-mode-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.tlv-mode-label {
+  font-size: var(--font-ui-smaller);
+}
+
+/* Zoom buttons */
+.tlv-zoom-group {
+  gap: 2px;
+  background: var(--background-modifier-hover);
+  border-radius: var(--radius-m);
+  padding: 2px;
+}
+
+.tlv-zoom-btn {
+  padding: 4px 10px;
+  border-radius: calc(var(--radius-m) - 2px);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-ui-smaller);
+  font-weight: 500;
+  line-height: 1.5;
+  transition: all 0.2s ease;
+}
+
+.tlv-zoom-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.tlv-zoom-btn.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.tlv-today-btn-toolbar {
+  margin-left: 4px;
+  color: var(--interactive-accent);
+  font-weight: 600;
+}
+
+.tlv-today-btn-toolbar:hover {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+/* Tag chips */
+.tlv-tag-chip {
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-ui-smaller);
+  line-height: 1.5;
+  transition: all 0.2s ease;
+}
+
+.tlv-tag-chip:hover {
+  color: var(--text-normal);
+  border-color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
+.tlv-tag-chip.is-active {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.tlv-tags {
+  flex-wrap: wrap;
+}
+
+.tlv-folder-select {
+  padding: 4px 8px;
+  border-radius: var(--radius-s);
+  font-size: var(--font-ui-smaller);
+}
+
+.tlv-count {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+  padding: 3px 10px;
+  background: var(--background-modifier-hover);
+  border-radius: 20px;
+}
+
+/* ============================================
+   Calendar View
+   ============================================ */
+.tlv-cal {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  padding: 16px;
+}
+
+.tlv-cal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 0 4px;
+}
+
+.tlv-cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tlv-cal-nav:hover {
+  color: var(--text-normal);
+  border-color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
+.tlv-cal-title-group {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.tlv-cal-title {
+  font-size: 1.25em;
+  font-weight: 700;
+  color: var(--text-normal);
+  letter-spacing: -0.01em;
+}
+
+.tlv-cal-year {
+  font-size: 1em;
+  color: var(--text-faint);
+  font-weight: 400;
+}
+
+.tlv-cal-today-btn {
+  margin-left: auto;
+  padding: 5px 14px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--interactive-accent);
+  background: transparent;
+  color: var(--interactive-accent);
+  cursor: pointer;
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.tlv-cal-today-btn:hover {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+/* Grid */
+.tlv-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  background: var(--background-modifier-border);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-l);
+  overflow: hidden;
+  flex: 1;
+}
+
+.tlv-cal-weekday {
+  padding: 8px 4px;
+  text-align: center;
+  font-size: var(--font-ui-smaller);
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.tlv-cal-weekday-weekend {
+  color: var(--text-faint);
+}
+
+/* Cells */
+.tlv-cal-cell {
+  min-height: 90px;
+  padding: 6px 8px;
+  background: var(--background-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transition: background 0.15s ease;
+  cursor: default;
+}
+
+.tlv-cal-cell:hover {
+  background: var(--background-modifier-hover);
+}
+
+.tlv-cal-cell-outside {
+  background: var(--background-secondary);
+  opacity: 0.5;
+}
+
+.tlv-cal-cell-outside:hover {
+  opacity: 0.7;
+}
+
+.tlv-cal-cell-weekend {
+  background: color-mix(in srgb, var(--background-secondary) 40%, var(--background-primary));
+}
+
+.tlv-cal-cell-today {
+  background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary));
+}
+
+.tlv-cal-cell-today:hover {
+  background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
+}
+
+.tlv-cal-day-num {
+  font-size: var(--font-ui-smaller);
+  font-weight: 500;
+  color: var(--text-muted);
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.tlv-cal-cell-today .tlv-cal-day-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: 700;
+}
+
+.tlv-cal-cell-outside .tlv-cal-day-num {
+  color: var(--text-faint);
+}
+
+.tlv-cal-cell-weekend .tlv-cal-day-num {
+  color: var(--text-faint);
+}
+
+/* Events inside cells */
+.tlv-cal-events {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-height: 0;
+}
+
+.tlv-cal-event {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ev-color, var(--interactive-accent)) 15%, var(--background-primary));
+  cursor: pointer;
+  transition: all 0.15s ease;
+  overflow: hidden;
+  border-left: 3px solid var(--ev-color, var(--interactive-accent));
+}
+
+.tlv-cal-event:hover {
+  background: color-mix(in srgb, var(--ev-color, var(--interactive-accent)) 25%, var(--background-primary));
+  transform: translateX(1px);
+}
+
+.tlv-cal-event-dot {
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ev-color, var(--interactive-accent));
+}
+
+.tlv-cal-event-text {
+  font-size: 11px;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.tlv-cal-more {
+  font-size: 10px;
+  color: var(--text-faint);
+  padding: 1px 6px;
+  cursor: default;
+}
+
+/* ============================================
+   Timeline Scroll area
+   ============================================ */
+.tlv-scroll {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: auto;
+  position: relative;
+}
+
+.tlv-canvas {
+  position: relative;
+  min-width: 100%;
+}
+
+/* ---- Axis ---- */
+.tlv-axis {
+  position: sticky;
+  top: 0;
+  height: 32px;
+  z-index: 3;
+  background: var(--background-primary);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.tlv-tick {
+  position: absolute;
+  top: 0;
+  height: 32px;
+  border-left: 1px solid var(--background-modifier-border-hover);
+  opacity: 0.4;
+}
+
+.tlv-tick-major {
+  opacity: 1;
+  border-left-color: var(--background-modifier-border);
+}
+
+.tlv-tick-label {
+  position: absolute;
+  left: 6px;
+  top: 8px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.tlv-tick-major .tlv-tick-label {
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+}
+
+/* ---- Body / grid ---- */
+.tlv-body {
+  position: relative;
+}
+
+.tlv-gridline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--background-modifier-border);
+  opacity: 0.3;
+}
+
+.tlv-today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 2px solid var(--color-red, #e25563);
+  z-index: 2;
+}
+
+.tlv-today-label {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-on-accent);
+  background: var(--color-red, #e25563);
+  padding: 1px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+/* ---- Events on timeline ---- */
+.tlv-event {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: 1px solid transparent;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.tlv-event:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  filter: brightness(1.06);
+  z-index: 5;
+}
+
+.tlv-event:active {
+  transform: translateY(0);
+}
+
+.tlv-event-point {
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border-color: var(--background-modifier-border);
+}
+
+.tlv-event-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+}
+
+.tlv-event-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--font-ui-smaller);
+  font-weight: 500;
+}
+
+/* ---- Empty state ---- */
+.tlv-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 48px 32px;
+  text-align: center;
+  color: var(--text-muted);
+  cursor: default;
+  user-select: none;
+}
+
+.tlv-empty-icon {
+  font-size: 56px;
+  margin-bottom: 20px;
+  opacity: 0.5;
+  animation: tlv-float 3s ease-in-out infinite;
+}
+
+@keyframes tlv-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.tlv-empty-text {
+  max-width: 380px;
+  line-height: 1.7;
+  font-size: var(--font-ui-small);
+}
+
+.tlv-empty-text code {
+  padding: 1px 5px;
+  border-radius: var(--radius-s);
+  background: var(--background-modifier-hover);
+  font-size: 0.9em;
+}
+
+.tlv-empty-text strong {
+  color: var(--text-normal);
+}
+
+/* ---- Modals ---- */
+.tlv-modal h2 {
+  margin: 0 0 16px;
+  font-weight: 700;
+}
+
+.tlv-modal .setting-item {
+  border-top: none;
+  padding: 6px 0;
+}
+
+/* ---- Suggest modal items ---- */
+.tlv-suggest-title {
+  font-weight: var(--font-semibold);
+}
+
+.tlv-suggest-path {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 600px) {
+  .tlv-count { display: none; }
+  .tlv-toolbar { gap: 6px; padding: 8px 10px; }
+  .tlv-mode-label { display: none; }
+  .tlv-cal { padding: 8px; }
+  .tlv-cal-cell { min-height: 60px; padding: 4px; }
+  .tlv-cal-event-dot { display: none; }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "timeline-view",
+  "name": "Timeline View",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "Visualize your notes as events on an interactive horizontal timeline, read from frontmatter dates.",
+  "author": "You",
+  "isDesktopOnly": false
+}
