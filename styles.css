@@ -1,0 +1,182 @@
+/* Стили для Day Mood Calendar */
+.theme-light, .theme-dark {
+  --mood-bad-color: #e57373;
+  --mood-normal-color: #ffd54f;
+  --mood-good-color: #81c784;
+}
+
+/* Контейнер календаря */
+.day-mood-calendar-container {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.day-mood-calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.day-mood-calendar-header h3 {
+  margin: 0;
+  font-size: 1.2em;
+}
+
+.day-mood-calendar-header button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: 4px;
+  color: var(--text-muted);
+}
+
+.day-mood-calendar-header button:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.day-mood-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.day-mood-day-header {
+  text-align: center;
+  font-weight: bold;
+  font-size: 0.8em;
+  color: var(--text-muted);
+  padding: 5px 0;
+}
+
+.day-mood-day {
+  aspect-ratio: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 6px;
+  cursor: pointer;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  transition: all 0.2s ease;
+  font-size: 0.9em;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Смайлик занимает всю ячейку, масштабируется с ней */
+.day-mood-emoji {
+  font-size: clamp(1.1rem, 4.5cqw, 2.2rem);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  container-type: inline-size;
+}
+
+/* Скрываем число в ячейке, когда есть настроение */
+.day-mood-day.has-mood > .day-mood-day-number {
+  display: none;
+}
+
+.day-mood-day:hover {
+  border-color: var(--text-muted);
+  transform: scale(1.05);
+}
+
+.day-mood-day.empty {
+  visibility: hidden;
+}
+
+.day-mood-day.today {
+  border: 2px solid var(--interactive-accent);
+  font-weight: bold;
+}
+
+/* Цвета настроения */
+.day-mood-day.mood-bad {
+  background-color: var(--mood-bad-color);
+  color: #fff;
+  border-color: var(--mood-bad-color);
+}
+
+.day-mood-day.mood-normal {
+  background-color: var(--mood-normal-color);
+  color: #333;
+  border-color: var(--mood-normal-color);
+}
+
+.day-mood-day.mood-good {
+  background-color: var(--mood-good-color);
+  color: #333;
+  border-color: var(--mood-good-color);
+}
+
+/* Модальное окно выбора */
+.mood-picker-modal-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.mood-picker-buttons {
+  display: flex;
+  gap: 15px;
+}
+
+.mood-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  font-size: 2em;
+  transition: transform 0.1s ease;
+  background-color: var(--background-secondary-alt);
+}
+
+.mood-btn span {
+  font-size: 0.4em;
+  margin-top: 8px;
+  color: var(--text-normal);
+}
+
+.mood-btn:hover {
+  transform: scale(1.1);
+}
+
+.mood-btn.bad {
+  border: 2px solid var(--mood-bad-color);
+}
+
+.mood-btn.bad:hover {
+  background-color: var(--mood-bad-color);
+  color: white;
+}
+
+.mood-btn.normal {
+  border: 2px solid var(--mood-normal-color);
+}
+
+.mood-btn.normal:hover {
+  background-color: var(--mood-normal-color);
+}
+
+.mood-btn.good {
+  border: 2px solid var(--mood-good-color);
+}
+
+.mood-btn.good:hover {
+  background-color: var(--mood-good-color);
+}

@@ -1,0 +1,9 @@
+{
+	"id": "day-mood-calendar",
+	"name": "Day Mood Calendar",
+	"version": "1.0.0",
+	"minAppVersion": "1.5.0",
+	"description": "Календарь настроения с цветовой маркировкой дней",
+	"author": "Rosmarin",
+	"isDesktopOnly": false
+}
