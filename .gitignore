@@ -1,0 +1,8 @@
+# Ignore everything in the directory
+*
+
+# Allow these files to be tracked
+!main.js
+!manifest.json
+!styles.css
+!.gitignore
