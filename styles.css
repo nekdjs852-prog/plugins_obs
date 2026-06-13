@@ -1,0 +1,16 @@
+/* Блок времени чтения над содержимым в режиме чтения */
+.reading-time-block {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	font-family: var(--font-interface);
+	margin-bottom: 1em;
+	padding-bottom: 0.4em;
+	border-bottom: 1px solid var(--background-modifier-border);
+	opacity: 0.9;
+}
+
+/* Запасной вывод в статус-баре */
+.reading-time-statusbar {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
