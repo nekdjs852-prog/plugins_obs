@@ -4,9 +4,11 @@
  * when nodes move.
  * Supports detaching endpoints to create free-floating anchors (Issue #3).
  */
-import { Connector, LineType, ArrowHead, generateId } from './types';
+import { Connector, LineType, ArrowHead, LayerObject, generateId } from './types';
 import { NodeManager } from './NodeManager';
 import { HistoryManager } from './HistoryManager';
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
 
 interface AnchorPoint {
   x: number;
@@ -24,31 +26,37 @@ interface FreeAnchor {
 
 export class ConnectorManager {
   private connectors: Map<string, Connector> = new Map();
-  private svgElements: Map<string, SVGElement> = new Map();
-  private svgRoot: SVGSVGElement;
+  // per-connector обёртка <svg>, живёт в worldLayer, порядок по z-index
+  private svgElements: Map<string, SVGSVGElement> = new Map();
+  private worldLayer: HTMLElement;
+  private defsSvg: SVGSVGElement;
   private defs: SVGDefsElement;
   private nodeManager: NodeManager;
   private history: HistoryManager;
 
+  onChange: (() => void) | null = null;
+  /** Внешний аллокатор единого z-порядка. */
+  zAlloc: (() => number) | null = null;
+
   /** Free-floating anchors for detached endpoints. */
   private freeAnchors: Map<string, FreeAnchor> = new Map();
 
-  onChange: (() => void) | null = null;
   /** Callback: show a context menu at screen position with items. */
   onContextMenu: ((x: number, y: number, items: { label: string; action: () => void }[]) => void) | null = null;
 
-  constructor(svgRoot: SVGSVGElement, nodeManager: NodeManager, history: HistoryManager) {
-    this.svgRoot = svgRoot;
+  constructor(worldLayer: HTMLElement, defsSvg: SVGSVGElement, nodeManager: NodeManager, history: HistoryManager) {
+    this.worldLayer = worldLayer;
+    this.defsSvg = defsSvg;
     this.nodeManager = nodeManager;
     this.history = history;
 
-    // Create <defs> for markers (arrowheads etc.)
-    this.defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-    this.svgRoot.prepend(this.defs);
+    // Create <defs> for markers (arrowheads etc.) в общем скрытом svg
+    this.defs = document.createElementNS(SVG_NS, 'defs');
+    this.defsSvg.appendChild(this.defs);
     this._ensureMarkers();
 
-    // Right-click on connector → context menu (Issue #3)
-    this.svgRoot.addEventListener('contextmenu', (e) => this._onContextMenu(e));
+    // Right-click on connector → context menu (делегируем на worldLayer)
+    this.worldLayer.addEventListener('contextmenu', (e) => this._onContextMenu(e));
   }
 
   // ─── CRUD ────────────────────────────────────────────────────
@@ -68,6 +76,9 @@ export class ConnectorManager {
       arrowStart: opts.arrowStart ?? 'none',
       arrowEnd: opts.arrowEnd ?? 'arrow',
       dashed: opts.dashed ?? false,
+      zIndex: opts.zIndex ?? (this.zAlloc ? this.zAlloc() : this.connectors.size + 1),
+      name: opts.name ?? 'Коннектор',
+      hidden: opts.hidden ?? false,
     };
 
     this.connectors.set(connector.id, connector);
@@ -142,6 +153,43 @@ export class ConnectorManager {
 
   getAllConnectors(): Connector[] {
     return Array.from(this.connectors.values());
+  }
+
+  // ─── Layer API ──────────────────────────────────────────────
+  setZIndex(id: string, z: number): void {
+    const c = this.connectors.get(id);
+    if (!c) return;
+    c.zIndex = z;
+    const svg = this.svgElements.get(id);
+    if (svg) svg.style.zIndex = String(z);
+    this._emitChange();
+  }
+
+  setHidden(id: string, hidden: boolean): void {
+    const c = this.connectors.get(id);
+    if (!c) return;
+    c.hidden = hidden;
+    const svg = this.svgElements.get(id);
+    if (svg) svg.style.display = hidden ? 'none' : '';
+    this._emitChange();
+  }
+
+  setName(id: string, name: string): void {
+    const c = this.connectors.get(id);
+    if (!c) return;
+    c.name = name;
+    this._emitChange();
+  }
+
+  getLayerObjects(): LayerObject[] {
+    return this.getAllConnectors().map((c) => ({
+      id: c.id,
+      kind: 'connector' as const,
+      name: c.name ?? 'Коннектор',
+      zIndex: c.zIndex ?? 0,
+      hidden: !!c.hidden,
+      subtype: 'connector',
+    }));
   }
 
   /** Delete all connectors attached to a given node id. */
@@ -278,7 +326,12 @@ export class ConnectorManager {
 
   deserialise(data: Connector[]): void {
     this.clear();
+    // у старых досок коннекторы без zIndex рисовались под нодами — держим их снизу
+    let fallbackZ = 1;
     for (const c of data) {
+      if (c.zIndex === undefined) c.zIndex = -1_000_000 + fallbackZ++;
+      if (c.name === undefined) c.name = 'Коннектор';
+      if (c.hidden === undefined) c.hidden = false;
       this.connectors.set(c.id, c);
       this._renderConnector(c);
     }
@@ -333,15 +386,18 @@ export class ConnectorManager {
   }
 
   private _renderConnector(c: Connector): void {
-    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    const svg = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
+    svg.classList.add('ib-connector-svg');
+
+    const g = document.createElementNS(SVG_NS, 'g');
     g.dataset.connectorId = c.id;
     g.classList.add('ib-connector');
 
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    const path = document.createElementNS(SVG_NS, 'path');
     path.classList.add('ib-connector-path');
 
     // Hit area for easier selection
-    const hitPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    const hitPath = document.createElementNS(SVG_NS, 'path');
     hitPath.classList.add('ib-connector-hit');
     hitPath.setAttribute('stroke', 'transparent');
     hitPath.setAttribute('stroke-width', '14');
@@ -349,17 +405,20 @@ export class ConnectorManager {
 
     g.appendChild(hitPath);
     g.appendChild(path);
-    this.svgRoot.appendChild(g);
-    this.svgElements.set(c.id, g);
+    svg.appendChild(g);
+    svg.style.zIndex = String(c.zIndex ?? 0);
+    svg.style.display = c.hidden ? 'none' : '';
+    this.worldLayer.appendChild(svg);
+    this.svgElements.set(c.id, svg);
 
     this._updateSvgElement(c);
   }
 
   private _updateSvgElement(c: Connector): void {
-    const g = this.svgElements.get(c.id);
-    if (!g) return;
-    const path = g.querySelector('.ib-connector-path') as SVGPathElement | null;
-    const hitPath = g.querySelector('.ib-connector-hit') as SVGPathElement | null;
+    const svg = this.svgElements.get(c.id);
+    if (!svg) return;
+    const path = svg.querySelector('.ib-connector-path') as SVGPathElement | null;
+    const hitPath = svg.querySelector('.ib-connector-hit') as SVGPathElement | null;
     if (!path) return;
 
     const startCenter = this._anchor(c.startItemId);

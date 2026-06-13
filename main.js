@@ -91,18 +91,27 @@ var HistoryManager = class {
 
 // src/NodeManager.ts
 var import_obsidian = require("obsidian");
+var DEFAULT_NODE_NAMES = {
+  rectangle: "\u041F\u0440\u044F\u043C\u043E\u0443\u0433\u043E\u043B\u044C\u043D\u0438\u043A",
+  ellipse: "\u042D\u043B\u043B\u0438\u043F\u0441",
+  text: "\u0422\u0435\u043A\u0441\u0442",
+  group: "\u0413\u0440\u0443\u043F\u043F\u0430",
+  image: "\u0418\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435"
+};
 var NodeManager = class {
   constructor(container, history, app) {
     this.nodes = /* @__PURE__ */ new Map();
     this.nodeElements = /* @__PURE__ */ new Map();
     this.nextZIndex = 1;
     this.onChange = null;
+    /** Внешний аллокатор единого z-порядка (общий для нод/штрихов/коннекторов). */
+    this.zAlloc = null;
     this.container = container;
     this.history = history;
     this.app = app;
   }
   createNode(type, x, y, width = 160, height = 80, extra = {}) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
     const node = {
       id: generateId(),
       type,
@@ -121,7 +130,9 @@ var NodeManager = class {
       fontSize: (_g = extra.fontSize) != null ? _g : 14,
       fontFamily: (_h = extra.fontFamily) != null ? _h : "Inter, system-ui, sans-serif",
       textColor: extra.textColor,
-      zIndex: this.nextZIndex++,
+      zIndex: (_i = extra.zIndex) != null ? _i : this.zAlloc ? this.zAlloc() : this.nextZIndex++,
+      name: (_j = extra.name) != null ? _j : DEFAULT_NODE_NAMES[type],
+      hidden: (_k = extra.hidden) != null ? _k : false,
       children: type === "group" ? [] : void 0
     };
     this.nodes.set(node.id, node);
@@ -188,6 +199,47 @@ var NodeManager = class {
   getNode(id) {
     return this.nodes.get(id);
   }
+  // ─── Layer API ──────────────────────────────────────────────
+  setZIndex(id, z) {
+    const node = this.nodes.get(id);
+    if (!node)
+      return;
+    node.zIndex = z;
+    const el = this.nodeElements.get(id);
+    if (el)
+      el.style.zIndex = String(z);
+    this._emitChange();
+  }
+  setHidden(id, hidden) {
+    const node = this.nodes.get(id);
+    if (!node)
+      return;
+    node.hidden = hidden;
+    const el = this.nodeElements.get(id);
+    if (el)
+      el.style.display = hidden ? "none" : "";
+    this._emitChange();
+  }
+  setName(id, name) {
+    const node = this.nodes.get(id);
+    if (!node)
+      return;
+    node.name = name;
+    this._emitChange();
+  }
+  getLayerObjects() {
+    return this.getAllNodes().map((n) => {
+      var _a, _b;
+      return {
+        id: n.id,
+        kind: "node",
+        name: (_b = (_a = n.name) != null ? _a : DEFAULT_NODE_NAMES[n.type]) != null ? _b : "\u041E\u0431\u044A\u0435\u043A\u0442",
+        zIndex: n.zIndex,
+        hidden: !!n.hidden,
+        subtype: n.type
+      };
+    });
+  }
   getAllNodes() {
     return Array.from(this.nodes.values());
   }
@@ -198,11 +250,16 @@ var NodeManager = class {
     return this.getAllNodes();
   }
   deserialise(data) {
+    var _a;
     this.clear();
     for (const node of data) {
       if (node.type === "image" && node.vaultImagePath) {
         node.imagePath = this._resolveVaultImagePath(node.vaultImagePath);
       }
+      if (node.name === void 0)
+        node.name = (_a = DEFAULT_NODE_NAMES[node.type]) != null ? _a : "\u041E\u0431\u044A\u0435\u043A\u0442";
+      if (node.hidden === void 0)
+        node.hidden = false;
       this.nodes.set(node.id, node);
       if (node.zIndex >= this.nextZIndex) {
         this.nextZIndex = node.zIndex + 1;
@@ -262,6 +319,7 @@ var NodeManager = class {
     el.style.border = `${node.borderWidth}px solid ${node.borderColor}`;
     el.style.borderRadius = `${node.borderRadius}px`;
     el.style.zIndex = String(node.zIndex);
+    el.style.display = node.hidden ? "none" : "";
   }
   _updateNodeElement(node) {
     const el = this.nodeElements.get(node.id);
@@ -303,26 +361,31 @@ var NodeManager = class {
 };
 
 // src/ConnectorManager.ts
+var SVG_NS = "http://www.w3.org/2000/svg";
 var ConnectorManager = class {
-  constructor(svgRoot, nodeManager, history) {
+  constructor(worldLayer, defsSvg, nodeManager, history) {
     this.connectors = /* @__PURE__ */ new Map();
+    // per-connector обёртка <svg>, живёт в worldLayer, порядок по z-index
     this.svgElements = /* @__PURE__ */ new Map();
+    this.onChange = null;
+    /** Внешний аллокатор единого z-порядка. */
+    this.zAlloc = null;
     /** Free-floating anchors for detached endpoints. */
     this.freeAnchors = /* @__PURE__ */ new Map();
-    this.onChange = null;
     /** Callback: show a context menu at screen position with items. */
     this.onContextMenu = null;
-    this.svgRoot = svgRoot;
+    this.worldLayer = worldLayer;
+    this.defsSvg = defsSvg;
     this.nodeManager = nodeManager;
     this.history = history;
-    this.defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-    this.svgRoot.prepend(this.defs);
+    this.defs = document.createElementNS(SVG_NS, "defs");
+    this.defsSvg.appendChild(this.defs);
     this._ensureMarkers();
-    this.svgRoot.addEventListener("contextmenu", (e) => this._onContextMenu(e));
+    this.worldLayer.addEventListener("contextmenu", (e) => this._onContextMenu(e));
   }
   // ─── CRUD ────────────────────────────────────────────────────
   createConnector(startItemId, endItemId, opts = {}) {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i;
     const connector = {
       id: generateId(),
       startItemId,
@@ -332,7 +395,10 @@ var ConnectorManager = class {
       width: (_c = opts.width) != null ? _c : 2,
       arrowStart: (_d = opts.arrowStart) != null ? _d : "none",
       arrowEnd: (_e = opts.arrowEnd) != null ? _e : "arrow",
-      dashed: (_f = opts.dashed) != null ? _f : false
+      dashed: (_f = opts.dashed) != null ? _f : false,
+      zIndex: (_g = opts.zIndex) != null ? _g : this.zAlloc ? this.zAlloc() : this.connectors.size + 1,
+      name: (_h = opts.name) != null ? _h : "\u041A\u043E\u043D\u043D\u0435\u043A\u0442\u043E\u0440",
+      hidden: (_i = opts.hidden) != null ? _i : false
     };
     this.connectors.set(connector.id, connector);
     this._renderConnector(connector);
@@ -400,6 +466,47 @@ var ConnectorManager = class {
   }
   getAllConnectors() {
     return Array.from(this.connectors.values());
+  }
+  // ─── Layer API ──────────────────────────────────────────────
+  setZIndex(id, z) {
+    const c = this.connectors.get(id);
+    if (!c)
+      return;
+    c.zIndex = z;
+    const svg = this.svgElements.get(id);
+    if (svg)
+      svg.style.zIndex = String(z);
+    this._emitChange();
+  }
+  setHidden(id, hidden) {
+    const c = this.connectors.get(id);
+    if (!c)
+      return;
+    c.hidden = hidden;
+    const svg = this.svgElements.get(id);
+    if (svg)
+      svg.style.display = hidden ? "none" : "";
+    this._emitChange();
+  }
+  setName(id, name) {
+    const c = this.connectors.get(id);
+    if (!c)
+      return;
+    c.name = name;
+    this._emitChange();
+  }
+  getLayerObjects() {
+    return this.getAllConnectors().map((c) => {
+      var _a, _b;
+      return {
+        id: c.id,
+        kind: "connector",
+        name: (_a = c.name) != null ? _a : "\u041A\u043E\u043D\u043D\u0435\u043A\u0442\u043E\u0440",
+        zIndex: (_b = c.zIndex) != null ? _b : 0,
+        hidden: !!c.hidden,
+        subtype: "connector"
+      };
+    });
   }
   /** Delete all connectors attached to a given node id. */
   deleteConnectorsForNode(nodeId) {
@@ -525,7 +632,14 @@ var ConnectorManager = class {
   }
   deserialise(data) {
     this.clear();
+    let fallbackZ = 1;
     for (const c of data) {
+      if (c.zIndex === void 0)
+        c.zIndex = -1e6 + fallbackZ++;
+      if (c.name === void 0)
+        c.name = "\u041A\u043E\u043D\u043D\u0435\u043A\u0442\u043E\u0440";
+      if (c.hidden === void 0)
+        c.hidden = false;
       this.connectors.set(c.id, c);
       this._renderConnector(c);
     }
@@ -572,28 +686,34 @@ var ConnectorManager = class {
     return { x: cx + dx * scale, y: cy + dy * scale };
   }
   _renderConnector(c) {
-    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    var _a;
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.classList.add("ib-connector-svg");
+    const g = document.createElementNS(SVG_NS, "g");
     g.dataset.connectorId = c.id;
     g.classList.add("ib-connector");
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    const path = document.createElementNS(SVG_NS, "path");
     path.classList.add("ib-connector-path");
-    const hitPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    const hitPath = document.createElementNS(SVG_NS, "path");
     hitPath.classList.add("ib-connector-hit");
     hitPath.setAttribute("stroke", "transparent");
     hitPath.setAttribute("stroke-width", "14");
     hitPath.setAttribute("fill", "none");
     g.appendChild(hitPath);
     g.appendChild(path);
-    this.svgRoot.appendChild(g);
-    this.svgElements.set(c.id, g);
+    svg.appendChild(g);
+    svg.style.zIndex = String((_a = c.zIndex) != null ? _a : 0);
+    svg.style.display = c.hidden ? "none" : "";
+    this.worldLayer.appendChild(svg);
+    this.svgElements.set(c.id, svg);
     this._updateSvgElement(c);
   }
   _updateSvgElement(c) {
-    const g = this.svgElements.get(c.id);
-    if (!g)
+    const svg = this.svgElements.get(c.id);
+    if (!svg)
       return;
-    const path = g.querySelector(".ib-connector-path");
-    const hitPath = g.querySelector(".ib-connector-hit");
+    const path = svg.querySelector(".ib-connector-path");
+    const hitPath = svg.querySelector(".ib-connector-hit");
     if (!path)
       return;
     const startCenter = this._anchor(c.startItemId);
@@ -682,15 +802,19 @@ var ConnectorManager = class {
 };
 
 // src/DrawManager.ts
+var SVG_NS2 = "http://www.w3.org/2000/svg";
 var DrawManager = class {
-  constructor(permanentCanvas, tempCanvas, history) {
+  constructor(worldLayer, tempCanvas, history) {
     this.permanentStrokes = /* @__PURE__ */ new Map();
     this.tempStrokes = /* @__PURE__ */ new Map();
     this.laserStrokes = /* @__PURE__ */ new Map();
+    // per-stroke SVG элементы постоянных штрихов (живут в worldLayer, порядок по z-index)
+    this.strokeElements = /* @__PURE__ */ new Map();
     this.currentStroke = null;
     this.onChange = null;
-    this.permanentCanvas = permanentCanvas;
-    this.permanentCtx = permanentCanvas.getContext("2d");
+    /** Внешний аллокатор единого z-порядка. */
+    this.zAlloc = null;
+    this.worldLayer = worldLayer;
     this.tempCanvas = tempCanvas;
     this.tempCtx = tempCanvas.getContext("2d");
     this.history = history;
@@ -722,9 +846,6 @@ var DrawManager = class {
     if (this.currentStroke.pointTimestamps) {
       this.currentStroke.pointTimestamps.push(Date.now());
     }
-    if (this.currentStroke.layer === "permanent") {
-      this._drawStrokeOnCanvas(this.tempCtx, this.currentStroke);
-    }
   }
   endStroke() {
     if (!this.currentStroke)
@@ -744,19 +865,21 @@ var DrawManager = class {
     if (stroke.layer === "laser") {
       return stroke;
     }
+    stroke.zIndex = this.zAlloc ? this.zAlloc() : this.permanentStrokes.size + 1;
+    stroke.name = stroke.tool === "marker" ? "\u041C\u0430\u0440\u043A\u0435\u0440" : "\u041A\u0430\u0440\u0430\u043D\u0434\u0430\u0448";
+    stroke.hidden = false;
     this.permanentStrokes.set(stroke.id, stroke);
-    this._redrawPermanent();
-    this._clearCanvas(this.tempCtx);
+    this._renderStrokeEl(stroke);
     this.history.push({
       type: "draw-stroke",
       undo: () => {
         this.permanentStrokes.delete(stroke.id);
-        this._redrawPermanent();
+        this._removeStrokeEl(stroke.id);
         this._emitChange();
       },
       redo: () => {
         this.permanentStrokes.set(stroke.id, stroke);
-        this._redrawPermanent();
+        this._renderStrokeEl(stroke);
         this._emitChange();
       }
     });
@@ -766,7 +889,6 @@ var DrawManager = class {
   addTempStroke(stroke) {
     stroke.layer = "temp";
     this.tempStrokes.set(stroke.id, stroke);
-    this._redrawTemp();
   }
   clearTemp() {
     this.tempStrokes.clear();
@@ -777,17 +899,17 @@ var DrawManager = class {
     if (!stroke)
       return;
     this.permanentStrokes.delete(id);
-    this._redrawPermanent();
+    this._removeStrokeEl(id);
     this.history.push({
       type: "delete-stroke",
       undo: () => {
         this.permanentStrokes.set(stroke.id, stroke);
-        this._redrawPermanent();
+        this._renderStrokeEl(stroke);
         this._emitChange();
       },
       redo: () => {
         this.permanentStrokes.delete(stroke.id);
-        this._redrawPermanent();
+        this._removeStrokeEl(stroke.id);
         this._emitChange();
       }
     });
@@ -799,6 +921,47 @@ var DrawManager = class {
   removeLaserStroke(id) {
     this.laserStrokes.delete(id);
   }
+  // ─── Layer API ──────────────────────────────────────────────
+  setZIndex(id, z) {
+    const s = this.permanentStrokes.get(id);
+    if (!s)
+      return;
+    s.zIndex = z;
+    const el = this.strokeElements.get(id);
+    if (el)
+      el.style.zIndex = String(z);
+    this._emitChange();
+  }
+  setHidden(id, hidden) {
+    const s = this.permanentStrokes.get(id);
+    if (!s)
+      return;
+    s.hidden = hidden;
+    const el = this.strokeElements.get(id);
+    if (el)
+      el.style.display = hidden ? "none" : "";
+    this._emitChange();
+  }
+  setName(id, name) {
+    const s = this.permanentStrokes.get(id);
+    if (!s)
+      return;
+    s.name = name;
+    this._emitChange();
+  }
+  getLayerObjects() {
+    return Array.from(this.permanentStrokes.values()).map((s) => {
+      var _a, _b;
+      return {
+        id: s.id,
+        kind: "stroke",
+        name: (_a = s.name) != null ? _a : s.tool === "marker" ? "\u041C\u0430\u0440\u043A\u0435\u0440" : "\u041A\u0430\u0440\u0430\u043D\u0434\u0430\u0448",
+        zIndex: (_b = s.zIndex) != null ? _b : 0,
+        hidden: !!s.hidden,
+        subtype: s.tool
+      };
+    });
+  }
   serialise(includeTempStrokes) {
     const arr = Array.from(this.permanentStrokes.values());
     if (includeTempStrokes) {
@@ -809,32 +972,31 @@ var DrawManager = class {
   deserialise(data) {
     this.permanentStrokes.clear();
     this.tempStrokes.clear();
+    this._clearStrokeEls();
+    let fallbackZ = 1;
     for (const s of data) {
       if (s.layer === "temp") {
         this.tempStrokes.set(s.id, s);
       } else {
+        if (s.zIndex === void 0)
+          s.zIndex = 1e6 + fallbackZ++;
+        if (s.name === void 0)
+          s.name = s.tool === "marker" ? "\u041C\u0430\u0440\u043A\u0435\u0440" : "\u041A\u0430\u0440\u0430\u043D\u0434\u0430\u0448";
+        if (s.hidden === void 0)
+          s.hidden = false;
         this.permanentStrokes.set(s.id, s);
+        this._renderStrokeEl(s);
       }
     }
-    this._redrawPermanent();
     this._redrawTemp();
   }
   resize(w, h) {
-    this.permanentCanvas.width = w;
-    this.permanentCanvas.height = h;
     this.tempCanvas.width = w;
     this.tempCanvas.height = h;
-    this._redrawPermanent();
     this._redrawTemp();
   }
+  // рендерит только превью текущего штриха и сохранённые temp-штрихи на экранном tempCanvas
   renderWithTransform(offsetX, offsetY, zoom) {
-    this._clearCanvas(this.permanentCtx);
-    this.permanentCtx.save();
-    this.permanentCtx.setTransform(zoom, 0, 0, zoom, offsetX, offsetY);
-    for (const s of this.permanentStrokes.values()) {
-      this._drawStrokeRaw(this.permanentCtx, s);
-    }
-    this.permanentCtx.restore();
     this._clearCanvas(this.tempCtx);
     this.tempCtx.save();
     this.tempCtx.setTransform(zoom, 0, 0, zoom, offsetX, offsetY);
@@ -846,11 +1008,67 @@ var DrawManager = class {
     }
     this.tempCtx.restore();
   }
-  _redrawPermanent() {
-    this._clearCanvas(this.permanentCtx);
-    for (const s of this.permanentStrokes.values()) {
-      this._drawStrokeOnCanvas(this.permanentCtx, s);
+  // ─── per-stroke SVG ─────────────────────────────────────────
+  _renderStrokeEl(stroke) {
+    let svg = this.strokeElements.get(stroke.id);
+    if (!svg) {
+      svg = document.createElementNS(SVG_NS2, "svg");
+      svg.classList.add("ib-stroke");
+      svg.dataset.strokeId = stroke.id;
+      const path = document.createElementNS(SVG_NS2, "path");
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("stroke-linejoin", "round");
+      svg.appendChild(path);
+      this.worldLayer.appendChild(svg);
+      this.strokeElements.set(stroke.id, svg);
     }
+    this._updateStrokeEl(stroke);
+  }
+  _updateStrokeEl(stroke) {
+    var _a;
+    const svg = this.strokeElements.get(stroke.id);
+    if (!svg)
+      return;
+    const path = svg.querySelector("path");
+    if (!path)
+      return;
+    const isMarker = stroke.tool === "marker";
+    path.setAttribute("d", this._strokePathD(stroke));
+    path.setAttribute("stroke", stroke.color);
+    path.setAttribute("stroke-width", String(isMarker ? stroke.width * 3 : stroke.width));
+    path.setAttribute("opacity", String(isMarker ? stroke.opacity * 0.45 : stroke.opacity));
+    svg.style.zIndex = String((_a = stroke.zIndex) != null ? _a : 0);
+    svg.style.display = stroke.hidden ? "none" : "";
+  }
+  _removeStrokeEl(id) {
+    const el = this.strokeElements.get(id);
+    if (el) {
+      el.remove();
+      this.strokeElements.delete(id);
+    }
+  }
+  _clearStrokeEls() {
+    for (const el of this.strokeElements.values())
+      el.remove();
+    this.strokeElements.clear();
+  }
+  // строит SVG path d с тем же квадратичным сглаживанием, что и canvas-рендер
+  _strokePathD(stroke) {
+    const pts = stroke.points;
+    if (pts.length < 2)
+      return "";
+    let d = `M${pts[0][0]},${pts[0][1]}`;
+    for (let i = 1; i < pts.length; i++) {
+      if (stroke.smoothing > 0 && i < pts.length - 1) {
+        const xc = (pts[i][0] + pts[i + 1][0]) / 2;
+        const yc = (pts[i][1] + pts[i + 1][1]) / 2;
+        d += ` Q${pts[i][0]},${pts[i][1]} ${xc},${yc}`;
+      } else {
+        d += ` L${pts[i][0]},${pts[i][1]}`;
+      }
+    }
+    return d;
   }
   _redrawTemp() {
     this._clearCanvas(this.tempCtx);
@@ -859,33 +1077,11 @@ var DrawManager = class {
     }
   }
   _drawStrokeOnCanvas(ctx, stroke) {
-    if (stroke.points.length < 2)
-      return;
     ctx.save();
-    ctx.globalAlpha = stroke.opacity;
-    ctx.strokeStyle = stroke.color;
-    ctx.lineWidth = stroke.width;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    if (stroke.tool === "marker") {
-      ctx.globalAlpha = stroke.opacity * 0.45;
-      ctx.lineWidth = stroke.width * 3;
-    }
-    ctx.beginPath();
-    ctx.moveTo(stroke.points[0][0], stroke.points[0][1]);
-    for (let i = 1; i < stroke.points.length; i++) {
-      if (stroke.smoothing > 0 && i < stroke.points.length - 1) {
-        const xc = (stroke.points[i][0] + stroke.points[i + 1][0]) / 2;
-        const yc = (stroke.points[i][1] + stroke.points[i + 1][1]) / 2;
-        ctx.quadraticCurveTo(stroke.points[i][0], stroke.points[i][1], xc, yc);
-      } else {
-        ctx.lineTo(stroke.points[i][0], stroke.points[i][1]);
-      }
-    }
-    ctx.stroke();
+    this._drawStrokeRaw(ctx, stroke);
     ctx.restore();
   }
-  // то же что _drawStrokeOnCanvas, но без save/restore — трансформ задаёт вызывающий
+  // рисует штрих на canvas (для temp-превью); трансформ задаёт вызывающий
   _drawStrokeRaw(ctx, stroke) {
     if (stroke.points.length < 2)
       return;
@@ -1263,8 +1459,22 @@ var SelectionManager = class {
     }
     textEl.contentEditable = "true";
     textEl.focus();
+    const sel = window.getSelection();
+    if (sel && textEl.firstChild) {
+      const range = document.createRange();
+      range.selectNodeContents(textEl);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
     const node = this.nodeManager.getNode(nodeId);
     const oldText = (_a = node == null ? void 0 : node.text) != null ? _a : "";
+    const onKeyDown = (e) => {
+      e.stopPropagation();
+      if (e.key === "Escape" || e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        finish();
+      }
+    };
     const finish = () => {
       var _a2;
       textEl.contentEditable = "false";
@@ -1272,14 +1482,10 @@ var SelectionManager = class {
       if (node && newText !== oldText)
         this.nodeManager.updateNode(nodeId, { text: newText });
       textEl.removeEventListener("blur", finish);
+      textEl.removeEventListener("keydown", onKeyDown);
     };
     textEl.addEventListener("blur", finish);
-    textEl.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" || e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        finish();
-      }
-    });
+    textEl.addEventListener("keydown", onKeyDown);
   }
 };
 
@@ -1347,7 +1553,8 @@ var SVG_ICONS = {
   redo: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="13,8 16,5 13,2"/><path d="M16 5H6a4 4 0 0 0 0 8h4"/></svg>`,
   fitScreen: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,6 2,2 6,2"/><polyline points="12,2 16,2 16,6"/><polyline points="16,12 16,16 12,16"/><polyline points="6,16 2,16 2,12"/></svg>`,
   fullscreen: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,2 2,2 2,6"/><polyline points="16,6 16,2 12,2"/><polyline points="12,16 16,16 16,12"/><polyline points="2,12 2,16 6,16"/><line x1="2" y1="2" x2="7" y2="7"/><line x1="11" y1="11" x2="16" y2="16"/><line x1="16" y1="2" x2="11" y2="7"/><line x1="7" y1="11" x2="2" y2="16"/></svg>`,
-  save: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 16H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h9l4 4v9a1 1 0 0 1-1 1z"/><polyline points="13,16 13,10 5,10 5,16"/><polyline points="5,2 5,6 11,6"/></svg>`
+  save: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 16H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h9l4 4v9a1 1 0 0 1-1 1z"/><polyline points="13,16 13,10 5,10 5,16"/><polyline points="5,2 5,6 11,6"/></svg>`,
+  layers: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="9,2 16,6 9,10 2,6"/><polyline points="2,9.5 9,13.5 16,9.5"/><polyline points="2,12.5 9,16.5 16,12.5"/></svg>`
 };
 var COLOR_CAPABLE_TOOLS = [
   "rectangle",
@@ -1409,6 +1616,7 @@ var Toolbar = class {
     this.fontControlsContainer = null;
     this.fontSizeInput = null;
     this.fontFamilySelect = null;
+    this.selectionNode = null;
     this.textColorSwatchBtn = null;
     this.textColorPopup = null;
     this.textColorCanvas = null;
@@ -1431,8 +1639,39 @@ var Toolbar = class {
       btn.classList.toggle("ib-toolbar-btn--active", id === tool);
     }
     this._toggleLaserColorPanel(tool === "laser");
-    this._toggleColorWheel(COLOR_CAPABLE_TOOLS.includes(tool));
-    this._toggleFontControls(FONT_CAPABLE_TOOLS.includes(tool));
+    this._refreshContextPanels();
+  }
+  /**
+   * Контекст выделения: при выделении ноды показываем настройки шрифта/цвета
+   * и синхронизируем значения с этой нодой. null — выделение снято.
+   */
+  setSelectionContext(node) {
+    var _a, _b;
+    this.selectionNode = node;
+    if (node) {
+      if (this.fontSizeInput)
+        this.fontSizeInput.value = String((_a = node.fontSize) != null ? _a : 14);
+      if (this.fontFamilySelect && node.fontFamily)
+        this.fontFamilySelect.value = node.fontFamily;
+      if (node.fillColor && !node.fillColor.startsWith("var(") && node.type !== "image") {
+        this.selectedColor = node.fillColor;
+        if (this.colorSwatchBtn)
+          this.colorSwatchBtn.style.backgroundColor = node.fillColor;
+        if (this.colorPreview)
+          this.colorPreview.style.backgroundColor = node.fillColor;
+      }
+      this.textColorUseDefault = !node.textColor;
+      this.selectedTextColor = (_b = node.textColor) != null ? _b : "var(--text-normal)";
+      this._updateTextColorSwatch();
+    }
+    this._refreshContextPanels();
+  }
+  // показываем панели шрифта/цвета если их поддерживает активный инструмент ЛИБО что-то выделено
+  _refreshContextPanels() {
+    const showFont = FONT_CAPABLE_TOOLS.includes(this.currentTool) || this.selectionNode !== null;
+    const showColor = COLOR_CAPABLE_TOOLS.includes(this.currentTool) || this.selectionNode !== null && this.selectionNode.type !== "image";
+    this._toggleFontControls(showFont);
+    this._toggleColorWheel(showColor);
   }
   getElement() {
     return this.el;
@@ -1468,6 +1707,7 @@ var Toolbar = class {
     actGroup.appendChild(this._svgBtn(SVG_ICONS.undo, "Undo (Ctrl+Z)", this.callbacks.onUndo));
     actGroup.appendChild(this._svgBtn(SVG_ICONS.redo, "Redo (Ctrl+Y)", this.callbacks.onRedo));
     actGroup.appendChild(this._svgBtn(SVG_ICONS.fitScreen, "Fit to screen", this.callbacks.onFitToScreen));
+    actGroup.appendChild(this._svgBtn(SVG_ICONS.layers, "\u0421\u043B\u043E\u0438", this.callbacks.onToggleLayers));
     actGroup.appendChild(this._svgBtn(SVG_ICONS.fullscreen, "Fullscreen (F11)", this.callbacks.onFullscreen));
     actGroup.appendChild(this._svgBtn(SVG_ICONS.save, "Export", this.callbacks.onExport));
     this.el.appendChild(actGroup);
@@ -1934,6 +2174,172 @@ var Toolbar = class {
   }
 };
 
+// src/LayersPanel.ts
+var ICONS = {
+  rectangle: "\u25AD",
+  ellipse: "\u25EF",
+  text: "T",
+  image: "\u{1F5BC}",
+  group: "\u25A2",
+  pencil: "\u270E",
+  marker: "\u{1F58A}",
+  connector: "\u2198"
+};
+var EYE_OPEN = `<svg width="15" height="15" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1 9s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z"/><circle cx="9" cy="9" r="2.2"/></svg>`;
+var EYE_CLOSED = `<svg width="15" height="15" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4l14 10"/><path d="M6.5 5.2A8.6 8.6 0 0 1 9 5c5 0 8 6 8 6a14 14 0 0 1-2.4 2.8M4.2 6.6A14 14 0 0 0 1 11s3 6 8 6a8 8 0 0 0 2.4-.4"/></svg>`;
+var LayersPanel = class {
+  constructor(parent, host) {
+    this.visible = false;
+    this.dragId = null;
+    this.host = host;
+    this.el = document.createElement("div");
+    this.el.className = "ib-layers-panel";
+    this.el.style.display = "none";
+    const header = document.createElement("div");
+    header.className = "ib-layers-header";
+    header.textContent = "\u0421\u043B\u043E\u0438";
+    this.el.appendChild(header);
+    this.listEl = document.createElement("div");
+    this.listEl.className = "ib-layers-list";
+    this.el.appendChild(this.listEl);
+    parent.appendChild(this.el);
+    this.el.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.el.addEventListener("wheel", (e) => e.stopPropagation());
+  }
+  toggle() {
+    this.visible = !this.visible;
+    this.el.style.display = this.visible ? "flex" : "none";
+    if (this.visible)
+      this.refresh();
+  }
+  isVisible() {
+    return this.visible;
+  }
+  destroy() {
+    this.el.remove();
+  }
+  refresh() {
+    if (!this.visible)
+      return;
+    const selected = new Set(this.host.getSelectedIds());
+    const objects = this.host.getLayerObjects();
+    this.listEl.empty();
+    if (objects.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "ib-layers-empty";
+      empty.textContent = "\u041F\u0443\u0441\u0442\u043E";
+      this.listEl.appendChild(empty);
+      return;
+    }
+    for (const obj of objects) {
+      this.listEl.appendChild(this._buildRow(obj, selected.has(obj.id)));
+    }
+  }
+  _buildRow(obj, isSelected) {
+    var _a, _b;
+    const row = document.createElement("div");
+    row.className = "ib-layer-row";
+    if (isSelected)
+      row.classList.add("ib-layer-row--selected");
+    if (obj.hidden)
+      row.classList.add("ib-layer-row--hidden");
+    row.dataset.layerId = obj.id;
+    row.draggable = true;
+    const eye = document.createElement("button");
+    eye.className = "ib-layer-eye";
+    eye.innerHTML = obj.hidden ? EYE_CLOSED : EYE_OPEN;
+    eye.title = obj.hidden ? "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C" : "\u0421\u043A\u0440\u044B\u0442\u044C";
+    eye.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.host.setObjectHidden(obj.id, !obj.hidden);
+      this.refresh();
+    });
+    row.appendChild(eye);
+    const icon = document.createElement("span");
+    icon.className = "ib-layer-icon";
+    icon.textContent = (_b = ICONS[(_a = obj.subtype) != null ? _a : ""]) != null ? _b : "\u25C6";
+    row.appendChild(icon);
+    const name = document.createElement("span");
+    name.className = "ib-layer-name";
+    name.textContent = obj.name;
+    name.title = obj.name;
+    row.appendChild(name);
+    row.addEventListener("click", () => {
+      this.host.selectObject(obj.id);
+      this.refresh();
+    });
+    name.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      this._startRename(name, obj);
+    });
+    row.addEventListener("dragstart", (e) => {
+      var _a2;
+      this.dragId = obj.id;
+      row.classList.add("ib-layer-row--dragging");
+      (_a2 = e.dataTransfer) == null ? void 0 : _a2.setData("text/plain", obj.id);
+    });
+    row.addEventListener("dragend", () => {
+      this.dragId = null;
+      row.classList.remove("ib-layer-row--dragging");
+      this.listEl.querySelectorAll(".ib-layer-row--dragover").forEach((r) => r.classList.remove("ib-layer-row--dragover"));
+    });
+    row.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      row.classList.add("ib-layer-row--dragover");
+    });
+    row.addEventListener("dragleave", () => row.classList.remove("ib-layer-row--dragover"));
+    row.addEventListener("drop", (e) => {
+      e.preventDefault();
+      row.classList.remove("ib-layer-row--dragover");
+      if (this.dragId && this.dragId !== obj.id) {
+        this._reorder(this.dragId, obj.id);
+      }
+    });
+    return row;
+  }
+  _startRename(nameEl, obj) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "ib-layer-rename-input";
+    input.value = obj.name;
+    nameEl.replaceWith(input);
+    input.focus();
+    input.select();
+    const finish = (commit) => {
+      const val = input.value.trim();
+      if (commit && val)
+        this.host.setObjectName(obj.id, val);
+      input.removeEventListener("blur", onBlur);
+      this.refresh();
+    };
+    const onBlur = () => finish(true);
+    input.addEventListener("blur", onBlur);
+    input.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        finish(true);
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        finish(false);
+      }
+    });
+  }
+  // перемещает dragId на позицию targetId в порядке сверху-вниз
+  _reorder(dragId, targetId) {
+    const order = this.host.getLayerObjects().map((o) => o.id);
+    const from = order.indexOf(dragId);
+    const to = order.indexOf(targetId);
+    if (from < 0 || to < 0)
+      return;
+    order.splice(from, 1);
+    order.splice(to, 0, dragId);
+    this.host.reorderTo(order);
+    this.refresh();
+  }
+};
+
 // src/ExportModal.ts
 var import_obsidian2 = require("obsidian");
 var ExportModal = class extends import_obsidian2.Modal {
@@ -2068,9 +2474,9 @@ var ExportModal = class extends import_obsidian2.Modal {
     ctx.fillStyle = "#1e1e2e";
     ctx.fillRect(0, 0, width, height);
     ctx.translate(padding - minX, padding - minY);
-    for (const s of strokes) {
-      if (s.points.length < 2)
-        continue;
+    const drawStroke = (s) => {
+      if (s.points.length < 2 || s.hidden)
+        return;
       ctx.save();
       ctx.globalAlpha = s.opacity;
       ctx.strokeStyle = s.color;
@@ -2087,8 +2493,10 @@ var ExportModal = class extends import_obsidian2.Modal {
         ctx.lineTo(s.points[i][0], s.points[i][1]);
       ctx.stroke();
       ctx.restore();
-    }
-    for (const n of nodes) {
+    };
+    const drawNode = (n) => {
+      if (n.hidden)
+        return;
       ctx.save();
       ctx.fillStyle = n.fillColor.startsWith("var(") ? "#2d2d3d" : n.fillColor;
       ctx.strokeStyle = n.borderColor.startsWith("var(") ? "#4a4a5a" : n.borderColor;
@@ -2112,6 +2520,12 @@ var ExportModal = class extends import_obsidian2.Modal {
         ctx.fillText(n.text, n.x + n.width / 2, n.y + n.height / 2, n.width - 16);
       }
       ctx.restore();
+    };
+    for (const it of this._orderedItems(nodes, strokes)) {
+      if (it.kind === "stroke")
+        drawStroke(it.item);
+      else
+        drawNode(it.item);
     }
     return canvas;
   }
@@ -2146,15 +2560,17 @@ var ExportModal = class extends import_obsidian2.Modal {
     parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
     parts.push(`<rect width="${w}" height="${h}" fill="#1e1e2e"/>`);
     parts.push(`<g transform="translate(${ox},${oy})">`);
-    for (const s of strokes) {
-      if (s.points.length < 2)
-        continue;
+    const strokeSvg = (s) => {
+      if (s.points.length < 2 || s.hidden)
+        return;
       const d = s.points.map((p, i) => `${i === 0 ? "M" : "L"}${p[0]},${p[1]}`).join(" ");
       const opacity = s.tool === "marker" ? s.opacity * 0.45 : s.opacity;
       const width = s.tool === "marker" ? s.width * 3 : s.width;
       parts.push(`<path d="${d}" stroke="${s.color}" stroke-width="${width}" fill="none" opacity="${opacity}" stroke-linecap="round" stroke-linejoin="round"/>`);
-    }
-    for (const n of nodes) {
+    };
+    const nodeSvg = (n) => {
+      if (n.hidden)
+        return;
       const fill = n.fillColor.startsWith("var(") ? "#2d2d3d" : n.fillColor;
       const stroke = n.borderColor.startsWith("var(") ? "#4a4a5a" : n.borderColor;
       if (n.type === "ellipse") {
@@ -2166,10 +2582,26 @@ var ExportModal = class extends import_obsidian2.Modal {
       if (n.text) {
         parts.push(`<text x="${n.x + n.width / 2}" y="${n.y + n.height / 2}" fill="#cccccc" font-size="14" text-anchor="middle" dominant-baseline="central">${this._escapeXml(n.text)}</text>`);
       }
+    };
+    for (const it of this._orderedItems(nodes, strokes)) {
+      if (it.kind === "stroke")
+        strokeSvg(it.item);
+      else
+        nodeSvg(it.item);
     }
     parts.push("</g>");
     parts.push("</svg>");
     return parts.join("\n");
+  }
+  // объединённый список объектов по возрастанию z (для корректного порядка слоёв)
+  _orderedItems(nodes, strokes) {
+    var _a, _b;
+    const items = [];
+    for (const s of strokes)
+      items.push({ kind: "stroke", z: (_a = s.zIndex) != null ? _a : 0, item: s });
+    for (const n of nodes)
+      items.push({ kind: "node", z: (_b = n.zIndex) != null ? _b : 0, item: n });
+    return items.sort((a, b) => a.z - b.z);
   }
   _roundRect(ctx, x, y, w, h, r) {
     ctx.beginPath();
@@ -2228,6 +2660,10 @@ var CanvasView = class extends import_obsidian4.TextFileView {
     this.currentColor = "#e0e0e0";
     this.currentWidth = 2;
     this.settings = { ...DEFAULT_SETTINGS };
+    // единый счётчик z-порядка (общий для нод/штрихов/коннекторов)
+    this.zCounter = 1;
+    this._suppressPanel = false;
+    this.layersPanel = null;
     this.isPanning = false;
     this.panStart = { x: 0, y: 0 };
     this.isDragging = false;
@@ -2472,6 +2908,8 @@ var CanvasView = class extends import_obsidian4.TextFileView {
       this._applyViewport();
     };
     this._onKeyDown = (e) => {
+      if (this._isEditingText())
+        return;
       if (e.key === " ") {
         this.spaceHeld = true;
         e.preventDefault();
@@ -2505,12 +2943,25 @@ var CanvasView = class extends import_obsidian4.TextFileView {
           this._updateDrawActiveState();
         }
       }
+      if (e.key === "]" || e.key === "[") {
+        const ids = this.selectionMgr.getSelectedIds();
+        if (ids.length) {
+          e.preventDefault();
+          if (e.key === "]") {
+            e.shiftKey ? this.bringToFront(ids) : this._moveInOrder(ids, -1);
+          } else {
+            e.shiftKey ? this.sendToBack(ids) : this._moveInOrder(ids, 1);
+          }
+        }
+      }
       if (e.key === "F11") {
         e.preventDefault();
         this.fullscreenMgr.toggle();
       }
     };
     this._onKeyUp = (e) => {
+      if (this._isEditingText())
+        return;
       if (e.key === " ")
         this.spaceHeld = false;
     };
@@ -2539,11 +2990,13 @@ var CanvasView = class extends import_obsidian4.TextFileView {
     this._guardToolbar();
   }
   async onClose() {
+    var _a;
     this._stopAutosave();
     this._stopRenderLoop();
     this.laserRenderer.stop();
     this.fullscreenMgr.exit();
     this.toolbar.destroy();
+    (_a = this.layersPanel) == null ? void 0 : _a.destroy();
   }
   getViewData() {
     this._collectBoardData();
@@ -2570,24 +3023,27 @@ var CanvasView = class extends import_obsidian4.TextFileView {
     this.boardRoot = contentEl.createDiv({ cls: "ib-board-root" });
     this.gridCanvas = this.boardRoot.createEl("canvas", { cls: "ib-grid-canvas" });
     this.worldLayer = this.boardRoot.createDiv({ cls: "ib-world-layer" });
-    this.nodeLayer = this.worldLayer.createDiv({ cls: "ib-node-layer" });
-    this.svgLayer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    this.svgLayer.classList.add("ib-svg-layer");
-    this.worldLayer.appendChild(this.svgLayer);
-    this.permanentCanvas = this.boardRoot.createEl("canvas", { cls: "ib-permanent-canvas" });
+    this.defsSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    this.defsSvg.classList.add("ib-defs-svg");
+    this.boardRoot.appendChild(this.defsSvg);
     this.tempCanvas = this.boardRoot.createEl("canvas", { cls: "ib-temp-canvas" });
     this.laserCanvas = this.boardRoot.createEl("canvas", { cls: "ib-laser-canvas" });
   }
   _initManagers() {
     this.historyMgr = new HistoryManager();
-    this.nodeMgr = new NodeManager(this.nodeLayer, this.historyMgr, this.app);
-    this.connectorMgr = new ConnectorManager(this.svgLayer, this.nodeMgr, this.historyMgr);
-    this.drawMgr = new DrawManager(this.permanentCanvas, this.tempCanvas, this.historyMgr);
+    this.nodeMgr = new NodeManager(this.worldLayer, this.historyMgr, this.app);
+    this.connectorMgr = new ConnectorManager(this.worldLayer, this.defsSvg, this.nodeMgr, this.historyMgr);
+    this.drawMgr = new DrawManager(this.worldLayer, this.tempCanvas, this.historyMgr);
     this.laserRenderer = new LaserRenderer(this.laserCanvas, this.drawMgr, { ...this.settings.laserParams });
-    this.selectionMgr = new SelectionManager(this.nodeLayer, this.nodeMgr, this.connectorMgr, this.historyMgr);
+    this.selectionMgr = new SelectionManager(this.worldLayer, this.nodeMgr, this.connectorMgr, this.historyMgr);
     this.fullscreenMgr = new FullscreenManager(this.boardRoot);
+    const allocZ = () => this.zCounter++;
+    this.nodeMgr.zAlloc = allocZ;
+    this.connectorMgr.zAlloc = allocZ;
+    this.drawMgr.zAlloc = allocZ;
     const markDirty = () => {
       this.dirty = true;
+      this._refreshLayersPanel();
     };
     this.nodeMgr.onChange = markDirty;
     this.connectorMgr.onChange = markDirty;
@@ -2647,8 +3103,27 @@ var CanvasView = class extends import_obsidian4.TextFileView {
       onExport: () => this._openExportModal(),
       onFontSizeChange: (size) => this._applyFontSizeToSelection(size),
       onFontFamilyChange: (family) => this._applyFontFamilyToSelection(family),
-      onTextColorChange: (color) => this._applyTextColorToSelection(color)
+      onTextColorChange: (color) => this._applyTextColorToSelection(color),
+      onToggleLayers: () => {
+        var _a;
+        return (_a = this.layersPanel) == null ? void 0 : _a.toggle();
+      }
     });
+    this.layersPanel = new LayersPanel(this.boardRoot, {
+      getLayerObjects: () => this.getLayerObjects(),
+      reorderTo: (ids) => this.reorderTo(ids),
+      setObjectHidden: (id, hidden) => this.setObjectHidden(id, hidden),
+      setObjectName: (id, name) => this.setObjectName(id, name),
+      selectObject: (id) => this.selectObject(id),
+      getSelectedIds: () => this.selectionMgr.getSelectedIds()
+    });
+    this.selectionMgr.onSelectionChange = (ids) => this._onSelectionChange(ids);
+  }
+  _onSelectionChange(ids) {
+    var _a, _b;
+    const node = ids.length === 1 ? (_a = this.nodeMgr.getNode(ids[0])) != null ? _a : null : null;
+    this.toolbar.setSelectionContext(node);
+    (_b = this.layersPanel) == null ? void 0 : _b.refresh();
   }
   _applyColorToSelection(color) {
     const ids = this.selectionMgr.getSelectedIds();
@@ -2705,6 +3180,22 @@ var CanvasView = class extends import_obsidian4.TextFileView {
     root.addEventListener("contextmenu", (e) => {
       if (e.button === 1)
         e.preventDefault();
+      const nodeEl = e.target.closest(".ib-node");
+      if (nodeEl) {
+        e.preventDefault();
+        const nodeId = nodeEl.dataset.nodeId;
+        if (nodeId && !this.selectionMgr.isSelected(nodeId))
+          this.selectionMgr.select(nodeId);
+        const ids = this.selectionMgr.getSelectedIds();
+        if (!ids.length)
+          return;
+        this._showContextMenu(e.clientX, e.clientY, [
+          { label: "\u041D\u0430 \u043F\u0435\u0440\u0435\u0434\u043D\u0438\u0439 \u043F\u043B\u0430\u043D", action: () => this.bringToFront(ids) },
+          { label: "\u041D\u0430 \u0437\u0430\u0434\u043D\u0438\u0439 \u043F\u043B\u0430\u043D", action: () => this.sendToBack(ids) },
+          { label: "\u0412\u044B\u0448\u0435", action: () => this._moveInOrder(ids, -1) },
+          { label: "\u041D\u0438\u0436\u0435", action: () => this._moveInOrder(ids, 1) }
+        ]);
+      }
     });
     root.addEventListener("dragover", (e) => {
       e.preventDefault();
@@ -2738,7 +3229,7 @@ var CanvasView = class extends import_obsidian4.TextFileView {
     this.creationPreview.style.top = `${y}px`;
     this.creationPreview.style.width = "0px";
     this.creationPreview.style.height = "0px";
-    this.nodeLayer.appendChild(this.creationPreview);
+    this.worldLayer.appendChild(this.creationPreview);
   }
   _updateCreationPreview(currentX, currentY) {
     if (!this.creationPreview)
@@ -2881,12 +3372,21 @@ var CanvasView = class extends import_obsidian4.TextFileView {
       img.src = src;
     });
   }
+  _isEditingText() {
+    const el = document.activeElement;
+    if (!el)
+      return false;
+    if (el.isContentEditable)
+      return true;
+    const tag = el.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+  }
   _applyViewport() {
     this.worldLayer.style.transform = `translate(${this.viewport.x}px, ${this.viewport.y}px) scale(${this.viewport.zoom})`;
     this._drawGrid();
   }
   _screenToBoard(sx, sy) {
-    const rect = this.permanentCanvas.getBoundingClientRect();
+    const rect = this.boardRoot.getBoundingClientRect();
     return {
       x: (sx - rect.left - this.viewport.x) / this.viewport.zoom,
       y: (sy - rect.top - this.viewport.y) / this.viewport.zoom
@@ -2945,14 +3445,12 @@ var CanvasView = class extends import_obsidian4.TextFileView {
     const rect = this.boardRoot.getBoundingClientRect();
     const w = Math.round(rect.width);
     const h = Math.round(rect.height);
-    [this.gridCanvas, this.permanentCanvas, this.tempCanvas, this.laserCanvas].forEach((c) => {
+    [this.gridCanvas, this.tempCanvas, this.laserCanvas].forEach((c) => {
       c.width = w;
       c.height = h;
       c.style.width = `${w}px`;
       c.style.height = `${h}px`;
     });
-    this.svgLayer.setAttribute("width", String(w));
-    this.svgLayer.setAttribute("height", String(h));
     this.drawMgr.resize(w, h);
     this.laserRenderer.resize(w, h);
     this._drawGrid();
@@ -2993,11 +3491,100 @@ var CanvasView = class extends import_obsidian4.TextFileView {
     this.nodeMgr.deserialise(this.boardData.nodes);
     this.connectorMgr.deserialise(this.boardData.connectors);
     this.drawMgr.deserialise(this.boardData.strokes);
+    this._syncZCounter();
     this.viewport = { ...this.boardData.viewport };
     if (this.boardData.laserParams) {
       this.laserRenderer.setParams(this.boardData.laserParams);
     }
     this._applyViewport();
+    this._refreshLayersPanel();
+  }
+  // объединённый список всех объектов для панели слоёв (z по убыванию = сверху вниз)
+  getLayerObjects() {
+    return [
+      ...this.nodeMgr.getLayerObjects(),
+      ...this.drawMgr.getLayerObjects(),
+      ...this.connectorMgr.getLayerObjects()
+    ].sort((a, b) => b.zIndex - a.zIndex);
+  }
+  _syncZCounter() {
+    let max = 0;
+    for (const o of this.getLayerObjects())
+      max = Math.max(max, o.zIndex);
+    this.zCounter = max + 1;
+  }
+  // ─── Управление порядком (единый z) ─────────────────────────
+  // маршрутизируем по всем менеджерам — сработает только владелец id
+  _applyZ(id, z) {
+    this.nodeMgr.setZIndex(id, z);
+    this.connectorMgr.setZIndex(id, z);
+    this.drawMgr.setZIndex(id, z);
+  }
+  setObjectHidden(id, hidden) {
+    this.nodeMgr.setHidden(id, hidden);
+    this.connectorMgr.setHidden(id, hidden);
+    this.drawMgr.setHidden(id, hidden);
+  }
+  setObjectName(id, name) {
+    this.nodeMgr.setName(id, name);
+    this.connectorMgr.setName(id, name);
+    this.drawMgr.setName(id, name);
+  }
+  selectObject(id) {
+    if (this.nodeMgr.getNode(id)) {
+      this.currentTool = "select";
+      this.toolbar.setActiveTool("select");
+      this._updateDrawActiveState();
+      this.selectionMgr.select(id);
+    }
+  }
+  _orderedIds() {
+    return this.getLayerObjects().map((o) => o.id);
+  }
+  // упорядочивает все объекты: первый в массиве = верхний (макс z)
+  reorderTo(orderedTopToBottom) {
+    const n = orderedTopToBottom.length;
+    this._suppressPanel = true;
+    orderedTopToBottom.forEach((id, i) => this._applyZ(id, n - i));
+    this.zCounter = n + 1;
+    this._suppressPanel = false;
+    this.dirty = true;
+    this._refreshLayersPanel();
+  }
+  bringToFront(ids) {
+    const sel = this._orderedIds().filter((id) => ids.includes(id));
+    const rest = this._orderedIds().filter((id) => !ids.includes(id));
+    this.reorderTo([...sel, ...rest]);
+  }
+  sendToBack(ids) {
+    const sel = this._orderedIds().filter((id) => ids.includes(id));
+    const rest = this._orderedIds().filter((id) => !ids.includes(id));
+    this.reorderTo([...rest, ...sel]);
+  }
+  // dir = -1: выше (к началу), +1: ниже (к концу)
+  _moveInOrder(ids, dir) {
+    const order = this._orderedIds();
+    const idset = new Set(ids);
+    if (dir === -1) {
+      for (let i = 1; i < order.length; i++) {
+        if (idset.has(order[i]) && !idset.has(order[i - 1])) {
+          [order[i - 1], order[i]] = [order[i], order[i - 1]];
+        }
+      }
+    } else {
+      for (let i = order.length - 2; i >= 0; i--) {
+        if (idset.has(order[i]) && !idset.has(order[i + 1])) {
+          [order[i + 1], order[i]] = [order[i], order[i + 1]];
+        }
+      }
+    }
+    this.reorderTo(order);
+  }
+  _refreshLayersPanel() {
+    var _a;
+    if (this._suppressPanel)
+      return;
+    (_a = this.layersPanel) == null ? void 0 : _a.refresh();
   }
   _clearAll() {
     this.nodeMgr.clear();
@@ -3017,11 +3604,10 @@ var CanvasView = class extends import_obsidian4.TextFileView {
       e.stopPropagation();
     });
   }
-  // при активном инструменте рисования ноды пропускают клики
+  // при активном инструменте рисования объекты пропускают клики
   _updateDrawActiveState() {
     const isDrawTool = ["pencil", "marker", "eraser", "laser"].includes(this.currentTool);
-    this.nodeLayer.classList.toggle("ib-draw-active", isDrawTool);
-    this.svgLayer.classList.toggle("ib-draw-active", isDrawTool);
+    this.worldLayer.classList.toggle("ib-draw-active", isDrawTool);
   }
 };
 

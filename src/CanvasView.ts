@@ -9,6 +9,7 @@ import { LaserRenderer } from './LaserRenderer';
 import { SelectionManager } from './SelectionManager';
 import { FullscreenManager } from './FullscreenManager';
 import { Toolbar } from './Toolbar';
+import { LayersPanel } from './LayersPanel';
 import { ExportModal } from './ExportModal';
 import { createEmptyBoard } from './Storage';
 
@@ -36,12 +37,15 @@ export class CanvasView extends TextFileView {
 
   private boardRoot!: HTMLElement;
   private worldLayer!: HTMLElement;
-  private nodeLayer!: HTMLElement;
-  private svgLayer!: SVGSVGElement;
-  private permanentCanvas!: HTMLCanvasElement;
+  private defsSvg!: SVGSVGElement;
   private tempCanvas!: HTMLCanvasElement;
   private laserCanvas!: HTMLCanvasElement;
   private gridCanvas!: HTMLCanvasElement;
+
+  // единый счётчик z-порядка (общий для нод/штрихов/коннекторов)
+  private zCounter = 1;
+  private _suppressPanel = false;
+  private layersPanel: LayersPanel | null = null;
 
 
   private isPanning = false;
@@ -97,6 +101,7 @@ export class CanvasView extends TextFileView {
     this.laserRenderer.stop();
     this.fullscreenMgr.exit();
     this.toolbar.destroy();
+    this.layersPanel?.destroy();
   }
 
 
@@ -131,18 +136,15 @@ export class CanvasView extends TextFileView {
     this.boardRoot = contentEl.createDiv({ cls: 'ib-board-root' });
     this.gridCanvas = this.boardRoot.createEl('canvas', { cls: 'ib-grid-canvas' });
 
+    // единый мировой слой: ноды, штрихи и коннекторы — сиблинги, порядок по z-index
     this.worldLayer = this.boardRoot.createDiv({ cls: 'ib-world-layer' });
 
+    // общий скрытый svg с <defs> (маркеры-стрелки для коннекторов)
+    this.defsSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this.defsSvg.classList.add('ib-defs-svg');
+    this.boardRoot.appendChild(this.defsSvg);
 
-    this.nodeLayer = this.worldLayer.createDiv({ cls: 'ib-node-layer' });
-
-    // SVG layer (connectors)
-    this.svgLayer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    this.svgLayer.classList.add('ib-svg-layer');
-    this.worldLayer.appendChild(this.svgLayer);
-
-
-    this.permanentCanvas = this.boardRoot.createEl('canvas', { cls: 'ib-permanent-canvas' });
+    // экранные канвасы поверх мирового слоя
     this.tempCanvas = this.boardRoot.createEl('canvas', { cls: 'ib-temp-canvas' });
     this.laserCanvas = this.boardRoot.createEl('canvas', { cls: 'ib-laser-canvas' });
   }
@@ -151,14 +153,20 @@ export class CanvasView extends TextFileView {
 
   private _initManagers(): void {
     this.historyMgr = new HistoryManager();
-    this.nodeMgr = new NodeManager(this.nodeLayer, this.historyMgr, this.app);
-    this.connectorMgr = new ConnectorManager(this.svgLayer, this.nodeMgr, this.historyMgr);
-    this.drawMgr = new DrawManager(this.permanentCanvas, this.tempCanvas, this.historyMgr);
+    this.nodeMgr = new NodeManager(this.worldLayer, this.historyMgr, this.app);
+    this.connectorMgr = new ConnectorManager(this.worldLayer, this.defsSvg, this.nodeMgr, this.historyMgr);
+    this.drawMgr = new DrawManager(this.worldLayer, this.tempCanvas, this.historyMgr);
     this.laserRenderer = new LaserRenderer(this.laserCanvas, this.drawMgr, { ...this.settings.laserParams });
-    this.selectionMgr = new SelectionManager(this.nodeLayer, this.nodeMgr, this.connectorMgr, this.historyMgr);
+    this.selectionMgr = new SelectionManager(this.worldLayer, this.nodeMgr, this.connectorMgr, this.historyMgr);
     this.fullscreenMgr = new FullscreenManager(this.boardRoot);
 
-    const markDirty = () => { this.dirty = true; };
+    // единый аллокатор z-порядка для всех типов объектов
+    const allocZ = () => this.zCounter++;
+    this.nodeMgr.zAlloc = allocZ;
+    this.connectorMgr.zAlloc = allocZ;
+    this.drawMgr.zAlloc = allocZ;
+
+    const markDirty = () => { this.dirty = true; this._refreshLayersPanel(); };
     this.nodeMgr.onChange = markDirty;
     this.connectorMgr.onChange = markDirty;
     this.drawMgr.onChange = markDirty;
@@ -226,7 +234,27 @@ export class CanvasView extends TextFileView {
       onFontSizeChange: (size) => this._applyFontSizeToSelection(size),
       onFontFamilyChange: (family) => this._applyFontFamilyToSelection(family),
       onTextColorChange: (color) => this._applyTextColorToSelection(color),
+      onToggleLayers: () => this.layersPanel?.toggle(),
     });
+
+    // панель слоёв
+    this.layersPanel = new LayersPanel(this.boardRoot, {
+      getLayerObjects: () => this.getLayerObjects(),
+      reorderTo: (ids) => this.reorderTo(ids),
+      setObjectHidden: (id, hidden) => this.setObjectHidden(id, hidden),
+      setObjectName: (id, name) => this.setObjectName(id, name),
+      selectObject: (id) => this.selectObject(id),
+      getSelectedIds: () => this.selectionMgr.getSelectedIds(),
+    });
+
+    // при изменении выделения показываем настройки текста/цвета выбранной ноды
+    this.selectionMgr.onSelectionChange = (ids) => this._onSelectionChange(ids);
+  }
+
+  private _onSelectionChange(ids: string[]): void {
+    const node = ids.length === 1 ? this.nodeMgr.getNode(ids[0]) ?? null : null;
+    this.toolbar.setSelectionContext(node);
+    this.layersPanel?.refresh();
   }
 
   private _applyColorToSelection(color: string): void {
@@ -303,6 +331,20 @@ export class CanvasView extends TextFileView {
 
     root.addEventListener('contextmenu', (e) => {
       if (e.button === 1) e.preventDefault();
+      const nodeEl = (e.target as HTMLElement).closest('.ib-node') as HTMLElement | null;
+      if (nodeEl) {
+        e.preventDefault();
+        const nodeId = nodeEl.dataset.nodeId;
+        if (nodeId && !this.selectionMgr.isSelected(nodeId)) this.selectionMgr.select(nodeId);
+        const ids = this.selectionMgr.getSelectedIds();
+        if (!ids.length) return;
+        this._showContextMenu(e.clientX, e.clientY, [
+          { label: 'На передний план', action: () => this.bringToFront(ids) },
+          { label: 'На задний план', action: () => this.sendToBack(ids) },
+          { label: 'Выше', action: () => this._moveInOrder(ids, -1) },
+          { label: 'Ниже', action: () => this._moveInOrder(ids, 1) },
+        ]);
+      }
     });
 
 
@@ -568,7 +610,7 @@ export class CanvasView extends TextFileView {
     this.creationPreview.style.width = '0px';
     this.creationPreview.style.height = '0px';
 
-    this.nodeLayer.appendChild(this.creationPreview);
+    this.worldLayer.appendChild(this.creationPreview);
   }
 
   private _updateCreationPreview(currentX: number, currentY: number): void {
@@ -762,7 +804,18 @@ export class CanvasView extends TextFileView {
     this._applyViewport();
   };
 
+  private _isEditingText(): boolean {
+    const el = document.activeElement as HTMLElement | null;
+    if (!el) return false;
+    if (el.isContentEditable) return true;
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+  }
+
   private _onKeyDown = (e: KeyboardEvent): void => {
+    // во время правки текста/ввода отдаём клавиатуру браузеру (пробел, Backspace, буквы-шорткаты и т.д.)
+    if (this._isEditingText()) return;
+
     if (e.key === ' ') { this.spaceHeld = true; e.preventDefault(); }
     if (e.key === 'Delete' || e.key === 'Backspace') this.selectionMgr.deleteSelected();
     if (e.ctrlKey && e.key === 'z') this.historyMgr.undo();
@@ -782,10 +835,21 @@ export class CanvasView extends TextFileView {
       }
     }
 
+    // порядок слоёв: [ ] (выше/ниже), Shift+[ ] (на задний/передний план)
+    if (e.key === ']' || e.key === '[') {
+      const ids = this.selectionMgr.getSelectedIds();
+      if (ids.length) {
+        e.preventDefault();
+        if (e.key === ']') { e.shiftKey ? this.bringToFront(ids) : this._moveInOrder(ids, -1); }
+        else { e.shiftKey ? this.sendToBack(ids) : this._moveInOrder(ids, 1); }
+      }
+    }
+
     if (e.key === 'F11') { e.preventDefault(); this.fullscreenMgr.toggle(); }
   };
 
   private _onKeyUp = (e: KeyboardEvent): void => {
+    if (this._isEditingText()) return;
     if (e.key === ' ') this.spaceHeld = false;
   };
 
@@ -796,7 +860,7 @@ export class CanvasView extends TextFileView {
   }
 
   private _screenToBoard(sx: number, sy: number): { x: number; y: number } {
-    const rect = this.permanentCanvas.getBoundingClientRect();
+    const rect = this.boardRoot.getBoundingClientRect();
     return {
       x: (sx - rect.left - this.viewport.x) / this.viewport.zoom,
       y: (sy - rect.top - this.viewport.y) / this.viewport.zoom,
@@ -850,14 +914,12 @@ export class CanvasView extends TextFileView {
     const rect = this.boardRoot.getBoundingClientRect();
     const w = Math.round(rect.width);
     const h = Math.round(rect.height);
-    [this.gridCanvas, this.permanentCanvas, this.tempCanvas, this.laserCanvas].forEach(c => {
+    [this.gridCanvas, this.tempCanvas, this.laserCanvas].forEach(c => {
       c.width = w;
       c.height = h;
       c.style.width = `${w}px`;
       c.style.height = `${h}px`;
     });
-    this.svgLayer.setAttribute('width', String(w));
-    this.svgLayer.setAttribute('height', String(h));
     this.drawMgr.resize(w, h);
     this.laserRenderer.resize(w, h);
     this._drawGrid();
@@ -905,11 +967,110 @@ export class CanvasView extends TextFileView {
     this.nodeMgr.deserialise(this.boardData.nodes);
     this.connectorMgr.deserialise(this.boardData.connectors);
     this.drawMgr.deserialise(this.boardData.strokes);
+    this._syncZCounter();
     this.viewport = { ...this.boardData.viewport };
     if (this.boardData.laserParams) {
       this.laserRenderer.setParams(this.boardData.laserParams);
     }
     this._applyViewport();
+    this._refreshLayersPanel();
+  }
+
+  // объединённый список всех объектов для панели слоёв (z по убыванию = сверху вниз)
+  getLayerObjects() {
+    return [
+      ...this.nodeMgr.getLayerObjects(),
+      ...this.drawMgr.getLayerObjects(),
+      ...this.connectorMgr.getLayerObjects(),
+    ].sort((a, b) => b.zIndex - a.zIndex);
+  }
+
+  private _syncZCounter(): void {
+    let max = 0;
+    for (const o of this.getLayerObjects()) max = Math.max(max, o.zIndex);
+    this.zCounter = max + 1;
+  }
+
+  // ─── Управление порядком (единый z) ─────────────────────────
+
+  // маршрутизируем по всем менеджерам — сработает только владелец id
+  private _applyZ(id: string, z: number): void {
+    this.nodeMgr.setZIndex(id, z);
+    this.connectorMgr.setZIndex(id, z);
+    this.drawMgr.setZIndex(id, z);
+  }
+
+  setObjectHidden(id: string, hidden: boolean): void {
+    this.nodeMgr.setHidden(id, hidden);
+    this.connectorMgr.setHidden(id, hidden);
+    this.drawMgr.setHidden(id, hidden);
+  }
+
+  setObjectName(id: string, name: string): void {
+    this.nodeMgr.setName(id, name);
+    this.connectorMgr.setName(id, name);
+    this.drawMgr.setName(id, name);
+  }
+
+  selectObject(id: string): void {
+    if (this.nodeMgr.getNode(id)) {
+      this.currentTool = 'select';
+      this.toolbar.setActiveTool('select');
+      this._updateDrawActiveState();
+      this.selectionMgr.select(id);
+    }
+  }
+
+  private _orderedIds(): string[] {
+    return this.getLayerObjects().map((o) => o.id);
+  }
+
+  // упорядочивает все объекты: первый в массиве = верхний (макс z)
+  reorderTo(orderedTopToBottom: string[]): void {
+    const n = orderedTopToBottom.length;
+    this._suppressPanel = true;
+    orderedTopToBottom.forEach((id, i) => this._applyZ(id, n - i));
+    this.zCounter = n + 1;
+    this._suppressPanel = false;
+    this.dirty = true;
+    this._refreshLayersPanel();
+  }
+
+  bringToFront(ids: string[]): void {
+    const sel = this._orderedIds().filter((id) => ids.includes(id));
+    const rest = this._orderedIds().filter((id) => !ids.includes(id));
+    this.reorderTo([...sel, ...rest]);
+  }
+
+  sendToBack(ids: string[]): void {
+    const sel = this._orderedIds().filter((id) => ids.includes(id));
+    const rest = this._orderedIds().filter((id) => !ids.includes(id));
+    this.reorderTo([...rest, ...sel]);
+  }
+
+  // dir = -1: выше (к началу), +1: ниже (к концу)
+  private _moveInOrder(ids: string[], dir: -1 | 1): void {
+    const order = this._orderedIds();
+    const idset = new Set(ids);
+    if (dir === -1) {
+      for (let i = 1; i < order.length; i++) {
+        if (idset.has(order[i]) && !idset.has(order[i - 1])) {
+          [order[i - 1], order[i]] = [order[i], order[i - 1]];
+        }
+      }
+    } else {
+      for (let i = order.length - 2; i >= 0; i--) {
+        if (idset.has(order[i]) && !idset.has(order[i + 1])) {
+          [order[i + 1], order[i]] = [order[i], order[i + 1]];
+        }
+      }
+    }
+    this.reorderTo(order);
+  }
+
+  private _refreshLayersPanel(): void {
+    if (this._suppressPanel) return;
+    this.layersPanel?.refresh();
   }
 
   private _clearAll(): void {
@@ -928,10 +1089,9 @@ export class CanvasView extends TextFileView {
     });
   }
 
-  // при активном инструменте рисования ноды пропускают клики
+  // при активном инструменте рисования объекты пропускают клики
   private _updateDrawActiveState(): void {
     const isDrawTool = ['pencil', 'marker', 'eraser', 'laser'].includes(this.currentTool);
-    this.nodeLayer.classList.toggle('ib-draw-active', isDrawTool);
-    this.svgLayer.classList.toggle('ib-draw-active', isDrawTool);
+    this.worldLayer.classList.toggle('ib-draw-active', isDrawTool);
   }
 }

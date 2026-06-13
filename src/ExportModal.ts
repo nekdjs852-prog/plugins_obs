@@ -11,7 +11,7 @@ export class ExportModal extends Modal {
   private filename: string;
   private boardData: BoardData;
   private boardRoot: HTMLElement;
-  private onConfirm: ((opts: ExportOptions) => void) | null = null;
+  private onConfirm: ((opts: ExportOptions | null) => void) | null = null;
 
   constructor(app: App, boardData: BoardData, boardRoot: HTMLElement, defaultFilename: string) {
     super(app);
@@ -132,8 +132,9 @@ export class ExportModal extends Modal {
     ctx.fillRect(0, 0, width, height);
     ctx.translate(padding - minX, padding - minY);
 
-    for (const s of strokes) {
-      if (s.points.length < 2) continue;
+    // отрисовка в едином порядке z (скрытые пропускаем)
+    const drawStroke = (s: typeof strokes[number]) => {
+      if (s.points.length < 2 || s.hidden) return;
       ctx.save();
       ctx.globalAlpha = s.opacity;
       ctx.strokeStyle = s.color;
@@ -145,9 +146,9 @@ export class ExportModal extends Modal {
       for (let i = 1; i < s.points.length; i++) ctx.lineTo(s.points[i][0], s.points[i][1]);
       ctx.stroke();
       ctx.restore();
-    }
-
-    for (const n of nodes) {
+    };
+    const drawNode = (n: typeof nodes[number]) => {
+      if (n.hidden) return;
       ctx.save();
       ctx.fillStyle = n.fillColor.startsWith('var(') ? '#2d2d3d' : n.fillColor;
       ctx.strokeStyle = n.borderColor.startsWith('var(') ? '#4a4a5a' : n.borderColor;
@@ -167,6 +168,11 @@ export class ExportModal extends Modal {
         ctx.fillText(n.text, n.x + n.width / 2, n.y + n.height / 2, n.width - 16);
       }
       ctx.restore();
+    };
+
+    for (const it of this._orderedItems(nodes, strokes)) {
+      if (it.kind === 'stroke') drawStroke(it.item as typeof strokes[number]);
+      else drawNode(it.item as typeof nodes[number]);
     }
     return canvas;
   }
@@ -195,14 +201,15 @@ export class ExportModal extends Modal {
     parts.push(`<rect width="${w}" height="${h}" fill="#1e1e2e"/>`);
     parts.push(`<g transform="translate(${ox},${oy})">`);
 
-    for (const s of strokes) {
-      if (s.points.length < 2) continue;
+    const strokeSvg = (s: typeof strokes[number]) => {
+      if (s.points.length < 2 || s.hidden) return;
       const d = s.points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0]},${p[1]}`).join(' ');
       const opacity = s.tool === 'marker' ? s.opacity * 0.45 : s.opacity;
       const width = s.tool === 'marker' ? s.width * 3 : s.width;
       parts.push(`<path d="${d}" stroke="${s.color}" stroke-width="${width}" fill="none" opacity="${opacity}" stroke-linecap="round" stroke-linejoin="round"/>`);
-    }
-    for (const n of nodes) {
+    };
+    const nodeSvg = (n: typeof nodes[number]) => {
+      if (n.hidden) return;
       const fill = n.fillColor.startsWith('var(') ? '#2d2d3d' : n.fillColor;
       const stroke = n.borderColor.startsWith('var(') ? '#4a4a5a' : n.borderColor;
       if (n.type === 'ellipse') {
@@ -214,10 +221,25 @@ export class ExportModal extends Modal {
       if (n.text) {
         parts.push(`<text x="${n.x + n.width / 2}" y="${n.y + n.height / 2}" fill="#cccccc" font-size="14" text-anchor="middle" dominant-baseline="central">${this._escapeXml(n.text)}</text>`);
       }
+    };
+    for (const it of this._orderedItems(nodes, strokes)) {
+      if (it.kind === 'stroke') strokeSvg(it.item as typeof strokes[number]);
+      else nodeSvg(it.item as typeof nodes[number]);
     }
     parts.push('</g>');
     parts.push('</svg>');
     return parts.join('\n');
+  }
+
+  // объединённый список объектов по возрастанию z (для корректного порядка слоёв)
+  private _orderedItems(
+    nodes: BoardData['nodes'],
+    strokes: BoardData['strokes'],
+  ): { kind: 'node' | 'stroke'; z: number; item: unknown }[] {
+    const items: { kind: 'node' | 'stroke'; z: number; item: unknown }[] = [];
+    for (const s of strokes) items.push({ kind: 'stroke', z: s.zIndex ?? 0, item: s });
+    for (const n of nodes) items.push({ kind: 'node', z: n.zIndex ?? 0, item: n });
+    return items.sort((a, b) => a.z - b.z);
   }
 
   private _roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {

@@ -22,6 +22,8 @@ export interface BoardNode {
   fontFamily?: string;
   textColor?: string;
   zIndex: number;
+  name?: string;           // имя для панели слоёв
+  hidden?: boolean;        // скрыт ли объект
 }
 
 export type LineType = 'straight' | 'quadratic' | 'orthogonal';
@@ -37,6 +39,9 @@ export interface Connector {
   arrowStart: ArrowHead;
   arrowEnd: ArrowHead;
   dashed: boolean;
+  zIndex?: number;
+  name?: string;
+  hidden?: boolean;
 }
 
 export type StrokeTool = 'pencil' | 'marker' | 'eraser' | 'laser';
@@ -54,6 +59,21 @@ export interface Stroke {
   smoothing: number;
   createdAt?: number;
   pointTimestamps?: number[]; // для посегментного затухания лазера
+  zIndex?: number;
+  name?: string;
+  hidden?: boolean;
+}
+
+// объект для панели слоёв (агрегат по всем менеджерам)
+export type LayerKind = 'node' | 'stroke' | 'connector';
+
+export interface LayerObject {
+  id: string;
+  kind: LayerKind;
+  name: string;
+  zIndex: number;
+  hidden: boolean;
+  subtype?: string; // тип ноды / инструмент штриха — для иконки
 }
 
 export type FadeCurve = 'linear' | 'exp';

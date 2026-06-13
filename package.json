@@ -1,6 +1,6 @@
 {
   "name": "obsidian-interactive-board",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Interactive visual board plugin for Obsidian",
   "main": "main.js",
   "scripts": {

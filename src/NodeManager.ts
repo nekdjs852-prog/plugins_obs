@@ -1,6 +1,14 @@
 import { App, TFile } from 'obsidian';
-import { BoardNode, NodeType, ResizeDirection, generateId } from './types';
+import { BoardNode, NodeType, ResizeDirection, LayerObject, generateId } from './types';
 import { HistoryManager } from './HistoryManager';
+
+const DEFAULT_NODE_NAMES: Record<NodeType, string> = {
+  rectangle: 'Прямоугольник',
+  ellipse: 'Эллипс',
+  text: 'Текст',
+  group: 'Группа',
+  image: 'Изображение',
+};
 
 export class NodeManager {
   private nodes: Map<string, BoardNode> = new Map();
@@ -11,6 +19,8 @@ export class NodeManager {
   private nextZIndex = 1;
 
   onChange: (() => void) | null = null;
+  /** Внешний аллокатор единого z-порядка (общий для нод/штрихов/коннекторов). */
+  zAlloc: (() => number) | null = null;
 
   constructor(container: HTMLElement, history: HistoryManager, app: App) {
     this.container = container;
@@ -44,7 +54,9 @@ export class NodeManager {
       fontSize: extra.fontSize ?? 14,
       fontFamily: extra.fontFamily ?? 'Inter, system-ui, sans-serif',
       textColor: extra.textColor,
-      zIndex: this.nextZIndex++,
+      zIndex: extra.zIndex ?? (this.zAlloc ? this.zAlloc() : this.nextZIndex++),
+      name: extra.name ?? DEFAULT_NODE_NAMES[type],
+      hidden: extra.hidden ?? false,
       children: type === 'group' ? [] : undefined,
     };
 
@@ -122,6 +134,43 @@ export class NodeManager {
     return this.nodes.get(id);
   }
 
+  // ─── Layer API ──────────────────────────────────────────────
+  setZIndex(id: string, z: number): void {
+    const node = this.nodes.get(id);
+    if (!node) return;
+    node.zIndex = z;
+    const el = this.nodeElements.get(id);
+    if (el) el.style.zIndex = String(z);
+    this._emitChange();
+  }
+
+  setHidden(id: string, hidden: boolean): void {
+    const node = this.nodes.get(id);
+    if (!node) return;
+    node.hidden = hidden;
+    const el = this.nodeElements.get(id);
+    if (el) el.style.display = hidden ? 'none' : '';
+    this._emitChange();
+  }
+
+  setName(id: string, name: string): void {
+    const node = this.nodes.get(id);
+    if (!node) return;
+    node.name = name;
+    this._emitChange();
+  }
+
+  getLayerObjects(): LayerObject[] {
+    return this.getAllNodes().map((n) => ({
+      id: n.id,
+      kind: 'node' as const,
+      name: n.name ?? DEFAULT_NODE_NAMES[n.type] ?? 'Объект',
+      zIndex: n.zIndex,
+      hidden: !!n.hidden,
+      subtype: n.type,
+    }));
+  }
+
   getAllNodes(): BoardNode[] {
     return Array.from(this.nodes.values());
   }
@@ -141,6 +190,8 @@ export class NodeManager {
       if (node.type === 'image' && node.vaultImagePath) {
         node.imagePath = this._resolveVaultImagePath(node.vaultImagePath);
       }
+      if (node.name === undefined) node.name = DEFAULT_NODE_NAMES[node.type] ?? 'Объект';
+      if (node.hidden === undefined) node.hidden = false;
       this.nodes.set(node.id, node);
       if (node.zIndex >= this.nextZIndex) {
         this.nextZIndex = node.zIndex + 1;
@@ -207,6 +258,7 @@ export class NodeManager {
     el.style.border = `${node.borderWidth}px solid ${node.borderColor}`;
     el.style.borderRadius = `${node.borderRadius}px`;
     el.style.zIndex = String(node.zIndex);
+    el.style.display = node.hidden ? 'none' : '';
   }
 
   private _updateNodeElement(node: BoardNode): void {

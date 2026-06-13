@@ -148,18 +148,30 @@ export class SelectionManager {
     let textEl = el.querySelector('.ib-node-text') as HTMLElement | null;
     if (!textEl) { textEl = document.createElement('span'); textEl.className = 'ib-node-text'; el.appendChild(textEl); }
     textEl.contentEditable = 'true';
+    // выделяем весь текст и ставим фокус, чтобы сразу можно было печатать
     textEl.focus();
+    const sel = window.getSelection();
+    if (sel && textEl.firstChild) {
+      const range = document.createRange();
+      range.selectNodeContents(textEl);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
     const node = this.nodeManager.getNode(nodeId);
     const oldText = node?.text ?? '';
+    const onKeyDown = (e: KeyboardEvent) => {
+      // не даём горячим клавишам холста перехватывать ввод
+      e.stopPropagation();
+      if (e.key === 'Escape' || (e.key === 'Enter' && !e.shiftKey)) { e.preventDefault(); finish(); }
+    };
     const finish = () => {
       textEl!.contentEditable = 'false';
       const newText = textEl!.textContent ?? '';
       if (node && newText !== oldText) this.nodeManager.updateNode(nodeId, { text: newText });
       textEl!.removeEventListener('blur', finish);
+      textEl!.removeEventListener('keydown', onKeyDown);
     };
     textEl.addEventListener('blur', finish);
-    textEl.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Escape' || (e.key === 'Enter' && !e.shiftKey)) { e.preventDefault(); finish(); }
-    });
+    textEl.addEventListener('keydown', onKeyDown);
   }
 }

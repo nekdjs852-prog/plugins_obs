@@ -1,4 +1,4 @@
-import { ToolType } from './types';
+import { ToolType, BoardNode } from './types';
 
 export interface ToolbarCallbacks {
   onToolChange: (tool: ToolType) => void;
@@ -13,6 +13,7 @@ export interface ToolbarCallbacks {
   onFontSizeChange: (size: number) => void;
   onFontFamilyChange: (family: string) => void;
   onTextColorChange: (color: string) => void;
+  onToggleLayers: () => void;
 }
 
 interface ToolDef {
@@ -53,6 +54,8 @@ const SVG_ICONS: Record<string, string> = {
   fullscreen: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,2 2,2 2,6"/><polyline points="16,6 16,2 12,2"/><polyline points="12,16 16,16 16,12"/><polyline points="2,12 2,16 6,16"/><line x1="2" y1="2" x2="7" y2="7"/><line x1="11" y1="11" x2="16" y2="16"/><line x1="16" y1="2" x2="11" y2="7"/><line x1="7" y1="11" x2="2" y2="16"/></svg>`,
 
   save: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 16H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h9l4 4v9a1 1 0 0 1-1 1z"/><polyline points="13,16 13,10 5,10 5,16"/><polyline points="5,2 5,6 11,6"/></svg>`,
+
+  layers: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="9,2 16,6 9,10 2,6"/><polyline points="2,9.5 9,13.5 16,9.5"/><polyline points="2,12.5 9,16.5 16,12.5"/></svg>`,
 
 };
 
@@ -120,6 +123,7 @@ export class Toolbar {
   private fontControlsContainer: HTMLElement | null = null;
   private fontSizeInput: HTMLInputElement | null = null;
   private fontFamilySelect: HTMLSelectElement | null = null;
+  private selectionNode: BoardNode | null = null;
 
 
   private textColorSwatchBtn: HTMLElement | null = null;
@@ -150,9 +154,37 @@ export class Toolbar {
       btn.classList.toggle('ib-toolbar-btn--active', id === tool);
     }
     this._toggleLaserColorPanel(tool === 'laser');
-    this._toggleColorWheel(COLOR_CAPABLE_TOOLS.includes(tool));
-    this._toggleFontControls(FONT_CAPABLE_TOOLS.includes(tool));
+    this._refreshContextPanels();
+  }
 
+  /**
+   * Контекст выделения: при выделении ноды показываем настройки шрифта/цвета
+   * и синхронизируем значения с этой нодой. null — выделение снято.
+   */
+  setSelectionContext(node: BoardNode | null): void {
+    this.selectionNode = node;
+    if (node) {
+      if (this.fontSizeInput) this.fontSizeInput.value = String(node.fontSize ?? 14);
+      if (this.fontFamilySelect && node.fontFamily) this.fontFamilySelect.value = node.fontFamily;
+      if (node.fillColor && !node.fillColor.startsWith('var(') && node.type !== 'image') {
+        this.selectedColor = node.fillColor;
+        if (this.colorSwatchBtn) this.colorSwatchBtn.style.backgroundColor = node.fillColor;
+        if (this.colorPreview) this.colorPreview.style.backgroundColor = node.fillColor;
+      }
+      this.textColorUseDefault = !node.textColor;
+      this.selectedTextColor = node.textColor ?? 'var(--text-normal)';
+      this._updateTextColorSwatch();
+    }
+    this._refreshContextPanels();
+  }
+
+  // показываем панели шрифта/цвета если их поддерживает активный инструмент ЛИБО что-то выделено
+  private _refreshContextPanels(): void {
+    const showFont = FONT_CAPABLE_TOOLS.includes(this.currentTool) || this.selectionNode !== null;
+    const showColor = COLOR_CAPABLE_TOOLS.includes(this.currentTool)
+      || (this.selectionNode !== null && this.selectionNode.type !== 'image');
+    this._toggleFontControls(showFont);
+    this._toggleColorWheel(showColor);
   }
 
   getElement(): HTMLElement { return this.el; }
@@ -198,6 +230,7 @@ export class Toolbar {
     actGroup.appendChild(this._svgBtn(SVG_ICONS.undo, 'Undo (Ctrl+Z)', this.callbacks.onUndo));
     actGroup.appendChild(this._svgBtn(SVG_ICONS.redo, 'Redo (Ctrl+Y)', this.callbacks.onRedo));
     actGroup.appendChild(this._svgBtn(SVG_ICONS.fitScreen, 'Fit to screen', this.callbacks.onFitToScreen));
+    actGroup.appendChild(this._svgBtn(SVG_ICONS.layers, 'Слои', this.callbacks.onToggleLayers));
     actGroup.appendChild(this._svgBtn(SVG_ICONS.fullscreen, 'Fullscreen (F11)', this.callbacks.onFullscreen));
     actGroup.appendChild(this._svgBtn(SVG_ICONS.save, 'Export', this.callbacks.onExport));
     this.el.appendChild(actGroup);
