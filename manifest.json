@@ -1,0 +1,10 @@
+{
+	"id": "weather-mood",
+	"name": "Weather Mood",
+	"version": "1.0.0",
+	"minAppVersion": "1.4.0",
+	"description": "Показывает анимированный баннер с реальной погодой в шапке активной заметки (Open-Meteo, без ключа).",
+	"author": "Weather Mood",
+	"authorUrl": "",
+	"isDesktopOnly": false
+}

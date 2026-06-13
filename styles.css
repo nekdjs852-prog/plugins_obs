@@ -1,0 +1,360 @@
+/* =========================================================================
+   Weather Mood — баннер погоды в шапке заметки
+   ========================================================================= */
+
+.weather-mood-banner {
+	position: relative;
+	height: 120px;
+	margin: 0 0 1em 0;
+	border-radius: 10px;
+	overflow: hidden;
+	display: flex;
+	align-items: flex-end;
+	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+	user-select: none;
+}
+
+/* Слой эффектов перекрывает весь баннер, но не ловит клики. */
+.weather-mood-fx {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	overflow: hidden;
+}
+
+/* Текстовая подложка с описанием. */
+.weather-mood-info {
+	position: relative;
+	z-index: 2;
+	display: flex;
+	align-items: baseline;
+	gap: 12px;
+	padding: 10px 16px;
+	width: 100%;
+	color: #fff;
+	text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+	background: linear-gradient(to top, rgba(0, 0, 0, 0.35), transparent);
+}
+
+.weather-mood-emoji {
+	font-size: 28px;
+	line-height: 1;
+}
+
+.weather-mood-temp {
+	font-size: 24px;
+	font-weight: 700;
+}
+
+.weather-mood-desc {
+	font-size: 15px;
+	font-weight: 500;
+}
+
+.weather-mood-loc {
+	margin-left: auto;
+	font-size: 13px;
+	opacity: 0.85;
+}
+
+/* Выключенные анимации: статичные фоны без движения. */
+.weather-mood-static .weather-mood-fx * {
+	animation: none !important;
+}
+
+/* =========================================================================
+   Фоны по типам погоды
+   ========================================================================= */
+
+.weather-mood-sun.weather-mood-day {
+	background: linear-gradient(160deg, #4a90e2 0%, #87cefa 45%, #ffe082 100%);
+}
+.weather-mood-sun.weather-mood-night {
+	background: linear-gradient(160deg, #0b1d3a 0%, #1a2a55 60%, #2c3e6e 100%);
+}
+
+.weather-mood-clouds {
+	background: linear-gradient(160deg, #6b7785 0%, #95a5b3 60%, #c2cad2 100%);
+}
+.weather-mood-clouds.weather-mood-night {
+	background: linear-gradient(160deg, #2c3440 0%, #3d4754 60%, #515c6b 100%);
+}
+
+.weather-mood-fog {
+	background: linear-gradient(160deg, #9aa3ab 0%, #b8bfc6 60%, #d6dadf 100%);
+}
+
+.weather-mood-rain {
+	background: linear-gradient(160deg, #2c3e50 0%, #3a536b 55%, #51708a 100%);
+}
+
+.weather-mood-snow {
+	background: linear-gradient(160deg, #5d7a99 0%, #8aa6c0 55%, #cdd9e5 100%);
+}
+
+.weather-mood-thunder {
+	background: linear-gradient(160deg, #15171c 0%, #262b36 55%, #3a4150 100%);
+}
+
+/* =========================================================================
+   Дождь
+   ========================================================================= */
+
+.wm-raindrop {
+	position: absolute;
+	top: -20%;
+	width: 2px;
+	height: 16px;
+	background: linear-gradient(
+		to bottom,
+		rgba(255, 255, 255, 0),
+		rgba(200, 225, 255, 0.85)
+	);
+	border-radius: 1px;
+	animation: wm-rain-fall linear infinite;
+}
+
+@keyframes wm-rain-fall {
+	0% {
+		transform: translateY(-20px);
+		opacity: 0;
+	}
+	10% {
+		opacity: 1;
+	}
+	100% {
+		transform: translateY(150px);
+		opacity: 0.2;
+	}
+}
+
+/* =========================================================================
+   Снег
+   ========================================================================= */
+
+.wm-snowflake {
+	position: absolute;
+	top: -10%;
+	color: #ffffff;
+	text-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+	animation: wm-snow-fall linear infinite;
+}
+
+@keyframes wm-snow-fall {
+	0% {
+		transform: translateY(-15px) translateX(0) rotate(0deg);
+		opacity: 0;
+	}
+	10% {
+		opacity: 1;
+	}
+	50% {
+		transform: translateY(60px) translateX(12px) rotate(180deg);
+	}
+	100% {
+		transform: translateY(135px) translateX(-12px) rotate(360deg);
+		opacity: 0.3;
+	}
+}
+
+/* =========================================================================
+   Солнце: ядро + вращающиеся лучи
+   ========================================================================= */
+
+.wm-sun-core {
+	position: absolute;
+	top: -40px;
+	right: -40px;
+	width: 130px;
+	height: 130px;
+	border-radius: 50%;
+	background: radial-gradient(
+		circle,
+		rgba(255, 249, 196, 1) 0%,
+		rgba(255, 213, 79, 0.9) 45%,
+		rgba(255, 213, 79, 0) 70%
+	);
+	animation: wm-sun-pulse 4s ease-in-out infinite;
+}
+
+@keyframes wm-sun-pulse {
+	0%,
+	100% {
+		transform: scale(1);
+		opacity: 0.95;
+	}
+	50% {
+		transform: scale(1.12);
+		opacity: 1;
+	}
+}
+
+.wm-sun-rays {
+	position: absolute;
+	top: 25px;
+	right: 25px;
+	width: 0;
+	height: 0;
+	animation: wm-sun-spin 30s linear infinite;
+}
+
+@keyframes wm-sun-spin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.wm-sun-ray {
+	position: absolute;
+	left: -2px;
+	top: 0;
+	width: 4px;
+	height: 90px;
+	background: linear-gradient(
+		to bottom,
+		rgba(255, 241, 118, 0.85),
+		rgba(255, 241, 118, 0)
+	);
+	transform-origin: top center;
+}
+
+/* Ночью «солнце» становится луной — скрываем лучи. */
+.weather-mood-night .wm-sun-rays {
+	display: none;
+}
+.weather-mood-night .wm-sun-core {
+	background: radial-gradient(
+		circle,
+		rgba(245, 245, 235, 1) 0%,
+		rgba(210, 215, 230, 0.8) 50%,
+		rgba(210, 215, 230, 0) 72%
+	);
+}
+
+/* =========================================================================
+   Облака
+   ========================================================================= */
+
+.wm-cloud {
+	position: absolute;
+	left: -160px;
+	width: 120px;
+	height: 40px;
+	background: rgba(255, 255, 255, 0.8);
+	border-radius: 40px;
+	filter: blur(1px);
+	animation: wm-cloud-drift linear infinite;
+}
+
+.wm-cloud::before,
+.wm-cloud::after {
+	content: "";
+	position: absolute;
+	background: inherit;
+	border-radius: 50%;
+}
+
+.wm-cloud::before {
+	width: 55px;
+	height: 55px;
+	top: -22px;
+	left: 18px;
+}
+
+.wm-cloud::after {
+	width: 40px;
+	height: 40px;
+	top: -16px;
+	right: 20px;
+}
+
+.weather-mood-fog .wm-cloud {
+	opacity: 0.55;
+}
+
+/* Из-за overflow:hidden анимируем движение по ширине баннера. */
+.weather-mood-clouds .wm-cloud,
+.weather-mood-fog .wm-cloud {
+	animation-name: wm-cloud-across;
+}
+
+@keyframes wm-cloud-across {
+	from {
+		transform: translateX(-160px);
+	}
+	to {
+		transform: translateX(120vw);
+	}
+}
+
+/* =========================================================================
+   Гроза: вспышка + молния поверх дождя
+   ========================================================================= */
+
+.wm-flash {
+	position: absolute;
+	inset: 0;
+	background: rgba(255, 255, 255, 0.9);
+	opacity: 0;
+	animation: wm-flash-blink 6s linear infinite;
+}
+
+@keyframes wm-flash-blink {
+	0%,
+	92%,
+	100% {
+		opacity: 0;
+	}
+	93% {
+		opacity: 0.8;
+	}
+	94% {
+		opacity: 0.1;
+	}
+	95% {
+		opacity: 0.9;
+	}
+	97% {
+		opacity: 0;
+	}
+}
+
+.wm-bolt {
+	position: absolute;
+	top: 12px;
+	left: 50%;
+	transform: translateX(-50%);
+	font-size: 46px;
+	opacity: 0;
+	filter: drop-shadow(0 0 8px rgba(255, 255, 150, 0.9));
+	animation: wm-bolt-strike 6s linear infinite;
+}
+
+@keyframes wm-bolt-strike {
+	0%,
+	92%,
+	100% {
+		opacity: 0;
+		transform: translateX(-50%) scale(0.8);
+	}
+	93% {
+		opacity: 1;
+		transform: translateX(-50%) scale(1.1);
+	}
+	96% {
+		opacity: 1;
+	}
+	98% {
+		opacity: 0;
+	}
+}
+
+/* Уважение к настройке системы «уменьшить движение». */
+@media (prefers-reduced-motion: reduce) {
+	.weather-mood-fx * {
+		animation: none !important;
+	}
+}
