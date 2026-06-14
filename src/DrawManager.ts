@@ -1,3 +1,8 @@
+// РИСОВАНИЕ ОТ РУКИ (карандаш, маркер, ластик, лазер).
+// Штрих = массив точек; сглаживание квадратичными кривыми.
+// Постоянные штрихи рисуются как отдельные <svg>-пути в worldLayer (поэтому
+// масштабируются вместе с холстом и участвуют в слоях). Текущий штрих рисуется
+// как превью на временном canvas. Лазер — в LaserRenderer (всегда сверху).
 import { Stroke, StrokeTool, StrokeLayer, LayerObject, generateId } from './types';
 import { HistoryManager } from './HistoryManager';
 

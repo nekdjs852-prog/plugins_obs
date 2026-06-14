@@ -1,4 +1,10 @@
 
+// ГЛАВНЫЙ ФАЙЛ ДОСКИ («дирижёр»).
+// Здесь: построение DOM (worldLayer + canvas-слои), создание всех менеджеров,
+// обработка мыши/клавиш, панорама и зум (viewport), создание фигур,
+// порядок слоёв (reorderTo / контекстное меню / хоткеи), автосейв и
+// сохранение/загрузка доски в JSON (getViewData / setViewData).
+// Сам по себе ничего не «рисует» — раздаёт работу менеджерам (Node/Connector/Draw/...).
 import { TextFileView, WorkspaceLeaf, TFile } from 'obsidian';
 import { BoardData, Viewport, ToolType, ResizeDirection, InteractiveBoardSettings, DEFAULT_SETTINGS } from './types';
 import { HistoryManager } from './HistoryManager';
@@ -106,11 +112,14 @@ export class CanvasView extends TextFileView {
 
 
 
+  // СОХРАНЕНИЕ: Obsidian вызывает это, чтобы получить содержимое файла .board.json.
+  // Собираем всё с менеджеров в один объект и сериализуем в JSON-текст.
   getViewData(): string {
     this._collectBoardData();
     return JSON.stringify(this.boardData, null, 2);
   }
 
+  // ЗАГРУЗКА: Obsidian отдаёт сюда текст файла. Парсим JSON и восстанавливаем доску.
   setViewData(data: string, clear: boolean): void {
     try {
       this.boardData = JSON.parse(data) as BoardData;
@@ -372,9 +381,13 @@ export class CanvasView extends TextFileView {
 
 
 
+  // ОБРАБОТКА НАЖАТИЯ МЫШИ — главный «роутер» действий.
+  // В зависимости от активного инструмента: пан холста, рисование, создание фигуры,
+  // соединитель, выделение/перетаскивание/ресайз. Решает, что начать делать.
   private _onPointerDown = (e: PointerEvent): void => {
     if (this.pointerOnToolbar) return;
 
+    // экранные координаты курсора → координаты на доске (с учётом пана и зума)
     const boardPt = this._screenToBoard(e.clientX, e.clientY);
 
     if (e.button === 1) {
@@ -859,6 +872,9 @@ export class CanvasView extends TextFileView {
     this._drawGrid();
   }
 
+  // Перевод координат экрана → координаты доски: вычитаем сдвиг камеры и делим на зум.
+  // Нужно, чтобы клик попадал в правильную точку независимо от того, куда сдвинут/как
+  // приближён холст.
   private _screenToBoard(sx: number, sy: number): { x: number; y: number } {
     const rect = this.boardRoot.getBoundingClientRect();
     return {

@@ -53,9 +53,13 @@ var import_obsidian4 = require("obsidian");
 var HistoryManager = class {
   constructor() {
     this.undoStack = [];
+    // выполненные действия (можно отменить)
     this.redoStack = [];
+    // отменённые действия (можно повторить)
     this.maxSize = 200;
   }
+  // лимит истории, чтобы не росла бесконечно
+  // записать новое действие; новое действие очищает стек redo (ветка истории сбрасывается)
   push(action) {
     this.undoStack.push(action);
     if (this.undoStack.length > this.maxSize) {
@@ -63,6 +67,7 @@ var HistoryManager = class {
     }
     this.redoStack = [];
   }
+  // отменить последнее действие и переложить его в redo
   undo() {
     const action = this.undoStack.pop();
     if (!action)
@@ -70,6 +75,7 @@ var HistoryManager = class {
     action.undo();
     this.redoStack.push(action);
   }
+  // повторить последнее отменённое и вернуть его в undo
   redo() {
     const action = this.redoStack.pop();
     if (!action)
@@ -1446,6 +1452,9 @@ var SelectionManager = class {
     this.selected.clear();
     (_a = this.onSelectionChange) == null ? void 0 : _a.call(this, this.getSelectedIds());
   }
+  // ПРАВКА ТЕКСТА в фигуре: делаем span редактируемым (contentEditable), фокус,
+  // выделяем текст. На blur/Enter — сохраняем новый текст в ноду. Слушатели снимаем,
+  // чтобы не копились. (Перехват клавиш холста гасится в CanvasView через _isEditingText.)
   startTextEdit(nodeId) {
     var _a;
     const el = this.nodeManager.getNodeElement(nodeId);
@@ -2686,6 +2695,9 @@ var CanvasView = class extends import_obsidian4.TextFileView {
     this.autosaveTimer = null;
     this.dirty = false;
     this.animFrameId = null;
+    // ОБРАБОТКА НАЖАТИЯ МЫШИ — главный «роутер» действий.
+    // В зависимости от активного инструмента: пан холста, рисование, создание фигуры,
+    // соединитель, выделение/перетаскивание/ресайз. Решает, что начать делать.
     this._onPointerDown = (e) => {
       if (this.pointerOnToolbar)
         return;
@@ -2998,10 +3010,13 @@ var CanvasView = class extends import_obsidian4.TextFileView {
     this.toolbar.destroy();
     (_a = this.layersPanel) == null ? void 0 : _a.destroy();
   }
+  // СОХРАНЕНИЕ: Obsidian вызывает это, чтобы получить содержимое файла .board.json.
+  // Собираем всё с менеджеров в один объект и сериализуем в JSON-текст.
   getViewData() {
     this._collectBoardData();
     return JSON.stringify(this.boardData, null, 2);
   }
+  // ЗАГРУЗКА: Obsidian отдаёт сюда текст файла. Парсим JSON и восстанавливаем доску.
   setViewData(data, clear) {
     try {
       this.boardData = JSON.parse(data);
@@ -3385,6 +3400,9 @@ var CanvasView = class extends import_obsidian4.TextFileView {
     this.worldLayer.style.transform = `translate(${this.viewport.x}px, ${this.viewport.y}px) scale(${this.viewport.zoom})`;
     this._drawGrid();
   }
+  // Перевод координат экрана → координаты доски: вычитаем сдвиг камеры и делим на зум.
+  // Нужно, чтобы клик попадал в правильную точку независимо от того, куда сдвинут/как
+  // приближён холст.
   _screenToBoard(sx, sy) {
     const rect = this.boardRoot.getBoundingClientRect();
     return {
