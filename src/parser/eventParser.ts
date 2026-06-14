@@ -1,7 +1,6 @@
-// ПАРСЕР: заметка → событие.
-// Читает frontmatter заметки через кэш Obsidian (date/start, end, title, tags, color)
-// и собирает объект TimelineEvent. Нет валидной даты → заметка не событие (null).
-// parseVault() прогоняет так ВСЕ заметки и отдаёт отсортированный список событий.
+// парсер: заметка -> событие.
+// читаю frontmatter через кэш obsidian (date/start, end, title, tags, color).
+// нет нормальной даты — значит не событие (null). parseVault так гоняет все заметки
 import { App, TFile, parseFrontMatterTags } from "obsidian";
 import { TimelineEvent } from "../models/TimelineEvent";
 

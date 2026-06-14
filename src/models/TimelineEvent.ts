@@ -1,6 +1,6 @@
-// ТИПЫ ДАННЫХ Timeline (только описания, без логики).
-// TimelineEvent — форма одного события; ZoomLevel/ViewMode — допустимые значения
-// (юнион-типы = пример типобезопасности); TimelineFilters — форма фильтров.
+// тут только типы, без логики.
+// TimelineEvent — форма события, ZoomLevel/ViewMode — допустимые значения (юнионы),
+// TimelineFilters — форма фильтров
 export interface TimelineEvent {
   id: string;
   filePath: string;
