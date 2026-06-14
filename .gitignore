@@ -1,2 +1,6 @@
-node_modules/
-*.js.map
+*
+!main.js
+!manifest.json
+!styles.css
+!README.md
+!.gitignore
