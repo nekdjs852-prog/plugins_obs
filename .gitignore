@@ -1,8 +1,2 @@
-# Игнорируем всё...
-*
-# ...кроме файлов, нужных для установки плагина, и описания
-!main.js
-!manifest.json
-!styles.css
-!README.md
-!.gitignore
+node_modules/
+*.js.map
