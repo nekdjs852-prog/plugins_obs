@@ -1,6 +1,5 @@
-// ВЫДЕЛЕНИЕ И РЕДАКТИРОВАНИЕ.
-// Отвечает за: выбор объектов (клик, Shift-клик), рамку выделения (rubber-band),
-// копирование/вставку, удаление, и правку текста внутри фигур (startTextEdit).
+// выделение и редактирование: клик/shift-клик, рамка выделения,
+// копипаст, удаление и правка текста внутри фигур (startTextEdit)
 import { BoardNode } from './types';
 import { NodeManager } from './NodeManager';
 import { ConnectorManager } from './ConnectorManager';
@@ -145,9 +144,9 @@ export class SelectionManager {
     this.onSelectionChange?.(this.getSelectedIds());
   }
 
-  // ПРАВКА ТЕКСТА в фигуре: делаем span редактируемым (contentEditable), фокус,
-  // выделяем текст. На blur/Enter — сохраняем новый текст в ноду. Слушатели снимаем,
-  // чтобы не копились. (Перехват клавиш холста гасится в CanvasView через _isEditingText.)
+  // правка текста: делаю span редактируемым, фокус, выделяю текст.
+  // на blur/Enter сохраняю в ноду. слушатели снимаю, чтоб не копились.
+  // (хоткеи холста при этом гасит _isEditingText в CanvasView)
   startTextEdit(nodeId: string): void {
     const el = this.nodeManager.getNodeElement(nodeId);
     if (!el) return;

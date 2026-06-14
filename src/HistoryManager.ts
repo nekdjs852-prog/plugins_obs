@@ -1,15 +1,13 @@
 import { HistoryAction } from './types';
 
-// ОТМЕНА/ПОВТОР (undo/redo).
-// Идея: каждое действие на доске (создать фигуру, подвинуть, нарисовать...) кладётся
-// в стек как пара функций { undo, redo }. Ctrl+Z берёт верхнее и вызывает undo,
-// Ctrl+Y — redo. Два стека: что можно отменить и что можно повторить.
+// undo/redo. каждое действие кидаю в стек парой {undo, redo}
+// ctrl+z — достаю верхнее и откатываю, ctrl+y — наоборот
 export class HistoryManager {
-  private undoStack: HistoryAction[] = [];   // выполненные действия (можно отменить)
-  private redoStack: HistoryAction[] = [];   // отменённые действия (можно повторить)
-  private maxSize = 200;                       // лимит истории, чтобы не росла бесконечно
+  private undoStack: HistoryAction[] = [];   // что можно отменить
+  private redoStack: HistoryAction[] = [];   // что можно вернуть
+  private maxSize = 200;                       // чтоб не росло бесконечно
 
-  // записать новое действие; новое действие очищает стек redo (ветка истории сбрасывается)
+  // новое действие сбрасывает redo (пошла новая ветка)
   push(action: HistoryAction): void {
     this.undoStack.push(action);
     if (this.undoStack.length > this.maxSize) {
@@ -18,7 +16,7 @@ export class HistoryManager {
     this.redoStack = [];
   }
 
-  // отменить последнее действие и переложить его в redo
+  // откат последнего, кидаю его в redo
   undo(): void {
     const action = this.undoStack.pop();
     if (!action) return;
@@ -26,7 +24,7 @@ export class HistoryManager {
     this.redoStack.push(action);
   }
 
-  // повторить последнее отменённое и вернуть его в undo
+  // вернуть отменённое обратно
   redo(): void {
     const action = this.redoStack.pop();
     if (!action) return;

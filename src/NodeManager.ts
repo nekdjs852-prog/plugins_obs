@@ -1,7 +1,5 @@
-// ФИГУРЫ (прямоугольник, эллипс, текст, картинка, группа).
-// CRUD фигур: создать/обновить/удалить, рендер каждой как <div> в worldLayer.
-// Также: z-index/скрытие/имя для панели слоёв (setZIndex/setHidden/setName)
-// и getLayerObjects() — список фигур для панели. История (undo) пишется здесь же.
+// тут фигуры (прямоугольник, эллипс, текст, картинка, группа)
+// создаю/меняю/удаляю, рисую каждую как <div>. плюс z-index/скрытие/имя для панели слоёв
 import { App, TFile } from 'obsidian';
 import { BoardNode, NodeType, ResizeDirection, LayerObject, generateId } from './types';
 import { HistoryManager } from './HistoryManager';
