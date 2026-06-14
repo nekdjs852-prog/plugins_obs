@@ -1,3 +1,8 @@
+// СОЗДАНИЕ НОВОЙ ЗАМЕТКИ (модальное окно).
+// CreateNoteModal — форма (название, дата, конец, теги, цвет, папка).
+// buildNoteContent — собирает frontmatter из введённых данных.
+// createNoteFile — РЕАЛЬНО создаёт файл .md в хранилище (app.vault.create).
+// Вызывается из TimelineView по правому клику → «Create new note».
 import { App, Modal, Setting, TFolder, normalizePath } from "obsidian";
 
 export interface NewNoteData {
@@ -154,6 +159,8 @@ export function buildNoteContent(data: NewNoteData): string {
   return lines.join("\n");
 }
 
+// Создаёт сам файл заметки в хранилище: формирует содержимое (frontmatter),
+// чистит имя файла, при необходимости создаёт папку и пишет файл через Obsidian API.
 /** Create the actual file in the vault. */
 export async function createNoteFile(
   app: App,

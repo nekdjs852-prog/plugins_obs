@@ -1,3 +1,8 @@
+// ВИД ТАЙМЛАЙНА (контейнер Obsidian + корень React).
+// Создаёт React-дерево внутри панели Obsidian. render() собирает события из заметок
+// (parseVault) и передаёт их в компонент <Timeline>. Подписывается на изменения
+// заметок (создание/правка/удаление) и перерисовывает с задержкой (debounce).
+// Также: открытие заметки по клику и контекстное меню (создать/добавить заметку).
 import { ItemView, Menu, TFile } from "obsidian";
 import * as React from "react";
 import { createRoot, Root } from "react-dom/client";
@@ -40,6 +45,9 @@ export class TimelineView extends ItemView {
     this.root = null;
   }
 
+  // DEBOUNCE: при массовых правках событий прилетает пачка — здесь мы «придерживаем»
+  // их и перерисовываем ОДИН раз через 200мс, а не сто раз подряд. Флаг не даёт
+  // запланировать несколько перерисовок одновременно.
   private scheduleRender() {
     if (this.renderScheduled) return;
     this.renderScheduled = true;

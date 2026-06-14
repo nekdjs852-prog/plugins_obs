@@ -1,3 +1,7 @@
+// ГЛАВНЫЙ КОМПОНЕНТ (React).
+// Хранит состояние интерфейса: режим (таймлайн/календарь), зум, активные теги, папку.
+// Фильтрует события, считает геометрию через buildTimeline и рисует ось, события и
+// маркер «сегодня». Переключает между видом «Календарь» и «Таймлайн».
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TimelineEvent, ViewMode, ZoomLevel } from "../models/TimelineEvent";

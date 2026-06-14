@@ -1,3 +1,6 @@
+// ТОЧКА ВХОДА ПЛАГИНА.
+// Здесь Obsidian «узнаёт» о плагине: регистрируем тип вида (TimelineView),
+// добавляем команду и иконку на панель. activateView() открывает вкладку с таймлайном.
 import { Plugin, WorkspaceLeaf } from "obsidian";
 import { TimelineView, TIMELINE_VIEW_TYPE } from "./views/TimelineView";
 

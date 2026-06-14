@@ -1,3 +1,7 @@
+// ГЕОМЕТРИЯ ТАЙМЛАЙНА — чистая математика, без React (легко тестировать).
+// buildTimeline() считает: сколько пикселей на день под выбранный зум, позицию и ширину
+// каждого события, раскладку по дорожкам (чтобы не накладывались), засечки оси и
+// позицию маркера «сегодня».
 import { TimelineEvent, ZoomLevel } from "../models/TimelineEvent";
 
 export const DAY_MS = 86_400_000;
@@ -46,6 +50,9 @@ const daysBetween = (a: Date, b: Date) =>
 /** Minimum on-screen width of an event so single-day items stay clickable. */
 const MIN_EVENT_WIDTH = 90;
 
+// РАСКЛАДКА ПО ДОРОЖКАМ («парковка»): кладём событие на первую дорожку, которая уже
+// освободилась (предыдущее на ней закончилось раньше начала нового). Если свободной нет —
+// заводим новую дорожку. Так пересекающиеся по времени события не накладываются.
 /** Greedily assign events to non-overlapping horizontal lanes. */
 function assignLanes(items: PositionedEvent[]): number {
   const laneEnds: number[] = [];
